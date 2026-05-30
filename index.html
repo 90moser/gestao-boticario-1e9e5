@@ -5,14 +5,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#667eea">
-<meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="O Boticário">
 
 <!-- Ícones para iOS -->
 <link rel="apple-touch-icon" sizes="180x180" href="icon-192.png">
-<link rel="apple-touch-icon" sizes="120x120" href="icon-120.png">
-<link rel="apple-touch-icon" sizes="152x152" href="icon-152.png">
 
 <!-- Ícones para Android -->
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
@@ -21,7 +18,6 @@
 <!-- Manifesto PWA -->
 <link rel="manifest" href="manifest.json">
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestão Revenda O Boticário</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -199,8 +195,8 @@
             return "text-red-500"; // Atrasado (Vermelho)
         };
         const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
-        const formatCurrency = (value) => new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(value);
-        const formatDate = (date) => new Date(date).toLocaleDateString('pt-PT');
+        const formatCurrency = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+        const formatDate = (date) => new Date(date).toLocaleDateString('pt-BR');
         const calculateDaysUntilExpiry = (expiryDate) => {
             const today = new Date();
             const expiry = new Date(expiryDate);
@@ -883,30 +879,18 @@ const handleResellerSale = () => {
     
     // Se não encontrou nenhum item, estoque é 0
     if (stockItems.length === 0) {
-        console.log("❌ ERRO: Produto não encontrado no estoque do revendedor!");
         alert(`Erro: O revendedor não tem este produto em stock.\nEstoque disponível: 0\nQuantidade pedida: ${qty}`);
         return;
     }
-    
+
     // Soma todas as quantidades encontradas (exatamente como a UI faz)
     const totalStockForProduct = stockItems.reduce((sum, item) => sum + parseInt(item.quantity || 0), 0);
-    
-    console.log("🔍 DEBUG - Estoque Revendedor (Query IDÊNTICA à UI):");
-    console.log("- Revendedor ID:", selectedReseller.id);
-    console.log("- Produto ID:", resellerSaleForm.productId);
-    console.log("- Itens encontrados:", stockItems.length);
-    console.log("- Itens completos:", stockItems);
-    console.log("- Estoque total somado:", totalStockForProduct);
-    console.log("- Quantidade pedida:", qty);
-    
+
     // Valida usando o estoque somado igual à UI
     if (totalStockForProduct < qty) {
-        console.log(`❌ ERRO: Estoque insuficiente! Total somado: ${totalStockForProduct}, Pedido: ${qty}`);
         alert(`Erro: O revendedor não tem essa quantidade em stock para vender.\nEstoque disponível: ${totalStockForProduct}\nQuantidade pedida: ${qty}`);
         return;
     }
-    
-    console.log(`✅ Total de estoque consolidado: ${totalStockForProduct}, Pedido: ${qty}`);
 
     // --- A CORREÇÃO MÁGICA ESTÁ AQUI ---
     // Vai buscar o preço de catálogo do produto automaticamente
@@ -937,7 +921,6 @@ const handleResellerSale = () => {
             
             // Subtrai a quantidade vendida
             const newQuantity = parseInt(item.quantity) - qty;
-            console.log(`🔄 Atualizando estoque: ${item.quantity} → ${newQuantity}`);
             
             // Se o estoque chegar a 0, mantém o item com quantity 0 para histórico
             return { ...item, quantity: newQuantity };
@@ -947,12 +930,6 @@ const handleResellerSale = () => {
     
     // Aplica as atualizações no estoque
     setResellerStock(updatedResellerStock);
-    
-    console.log(`✅ Venda registrada! Estoque atualizado no Firestore: -${qty} unidades`);
-    console.log(`📊 Estoque restante: ${updatedResellerStock.filter(item => 
-        item.resellerId === selectedReseller.id && 
-        item.productId === resellerSaleForm.productId
-    ).reduce((sum, item) => sum + parseInt(item.quantity || 0), 0)} unidades`);
     setShowResellerSaleModal(false);
     setResellerSaleForm({ productId: '', quantity: 1, salePrice: '', date: new Date().toISOString().split('T')[0] });
 };
@@ -1668,8 +1645,8 @@ return (
                                     <h3 className="text-lg font-bold mb-4">Registrar Entrada de Mercadoria</h3>
                                     <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
                                         <SearchableDropdown label="Produto *" options={productOptions} value={purchaseForm.productId} onChange={(value) => setPurchaseForm({...purchaseForm, productId: value})} placeholder="Selecione o produto" renderOption={(option) => (<div><div className="font-medium">{option.label}</div><div className="text-xs text-gray-500">Stock: {option.stock} un.</div></div>)} />
-                                        <input type="number" placeholder="Quantidade" value={purchaseForm.quantity} onChange={(e) => setPurchaseForm({...purchaseForm, quantity: e.target.value})} className="border rounded-lg p-3 text-sm" />
-                                        <input type="number" placeholder="Preço Unitário (€)" value={purchaseForm.price} onChange={(e) => setPurchaseForm({...purchaseForm, price: e.target.value})} className="border rounded-lg p-3 text-sm" />
+                                        <input type="number" placeholder="Quantidade" min="1" value={purchaseForm.quantity} onChange={(e) => setPurchaseForm({...purchaseForm, quantity: e.target.value})} className="border rounded-lg p-3 text-sm" />
+                                        <input type="number" placeholder="Preço Unitário (R$)" min="0" step="0.01" value={purchaseForm.price} onChange={(e) => setPurchaseForm({...purchaseForm, price: e.target.value})} className="border rounded-lg p-3 text-sm" />
                                         <input type="date" value={purchaseForm.date} onChange={(e) => setPurchaseForm({...purchaseForm, date: e.target.value})} className="border rounded-lg p-3 text-sm" />
                                     </div>
                                     <button onClick={handleAddPurchase} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition text-sm"><i className="fas fa-save mr-2"></i>Registrar Compra</button>
@@ -1884,7 +1861,7 @@ return (
                                 </div>
                                 <div>
                                     <label className="block text-gray-700 font-medium mb-2">Preço Unitário (€) *</label>
-                                    <input type="number" value={quickBuyForm.price} onChange={(e) => setQuickBuyForm({...quickBuyForm, price: e.target.value})} className="w-full border rounded-lg p-3" step="0.01" />
+                                    <input type="number" value={quickBuyForm.price} onChange={(e) => setQuickBuyForm({...quickBuyForm, price: e.target.value})} className="w-full border rounded-lg p-3" step="0.01" min="0" />
                                 </div>
                             </div>
                             <div>
@@ -2268,7 +2245,7 @@ return (
                                 </div>
                                 <div>
                                     <label className="block text-gray-700 font-medium mb-2">💰 Preço Catálogo (€)</label>
-                                    <input type="number" value={productForm.catalogPrice} onChange={(e) => setProductForm({...productForm, catalogPrice: e.target.value})} className="w-full border rounded-lg p-3" placeholder="Ex: 45,90" step="0.01" />
+                                    <input type="number" value={productForm.catalogPrice} onChange={(e) => setProductForm({...productForm, catalogPrice: e.target.value})} className="w-full border rounded-lg p-3" placeholder="Ex: 45,90" step="0.01" min="0" />
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
@@ -2309,7 +2286,7 @@ return (
                                 </div>
                                 <div>
                                     <label className="block text-gray-700 font-medium mb-2">💰 Preço Catálogo (€)</label>
-                                    <input type="number" value={productForm.catalogPrice} onChange={(e) => setProductForm({...productForm, catalogPrice: e.target.value})} className="w-full border rounded-lg p-3" step="0.01" />
+                                    <input type="number" value={productForm.catalogPrice} onChange={(e) => setProductForm({...productForm, catalogPrice: e.target.value})} className="w-full border rounded-lg p-3" step="0.01" min="0" />
                                 </div>
                             </div>
                             <div>
@@ -2332,7 +2309,7 @@ return (
                                 </div>
                                 <div>
                                     <label className="block text-gray-700 font-medium mb-2">Preço de Venda (€) *</label>
-                                    <input type="number" value={saleForm.price} onChange={(e) => setSaleForm({...saleForm, price: e.target.value})} className="w-full border rounded-lg p-3" step="0.01" />
+                                    <input type="number" value={saleForm.price} onChange={(e) => setSaleForm({...saleForm, price: e.target.value})} className="w-full border rounded-lg p-3" step="0.01" min="0" />
                                 </div>
                             </div>
                             <div>
@@ -2368,7 +2345,7 @@ return (
                                 </div>
                                 <div>
                                     <label className="block text-gray-700 font-medium mb-2">Preço de Venda (€) *</label>
-                                    <input type="number" value={saleForm.price} onChange={(e) => setSaleForm({...saleForm, price: e.target.value})} className="w-full border rounded-lg p-3" step="0.01" />
+                                    <input type="number" value={saleForm.price} onChange={(e) => setSaleForm({...saleForm, price: e.target.value})} className="w-full border rounded-lg p-3" step="0.01" min="0" />
                                 </div>
                             </div>
                             <div>
@@ -2449,7 +2426,7 @@ return (
                                 </div>
                                 <div>
                                     <label className="block text-gray-700 font-medium mb-2">Comissão (%)</label>
-                                    <input type="number" value={resellerForm.commissionRate} onChange={(e) => setResellerForm({...resellerForm, commissionRate: e.target.value})} className="w-full border rounded-lg p-3" />
+                                    <input type="number" value={resellerForm.commissionRate} onChange={(e) => setResellerForm({...resellerForm, commissionRate: e.target.value})} className="w-full border rounded-lg p-3" min="0" max="100" step="0.1" />
                                 </div>
                             </div>
                             <div>
@@ -2482,7 +2459,7 @@ return (
                                 </div>
                                 <div>
                                     <label className="block text-gray-700 font-medium mb-2">Comissão (%)</label>
-                                    <input type="number" value={resellerForm.commissionRate} onChange={(e) => setResellerForm({...resellerForm, commissionRate: e.target.value})} className="w-full border rounded-lg p-3" />
+                                    <input type="number" value={resellerForm.commissionRate} onChange={(e) => setResellerForm({...resellerForm, commissionRate: e.target.value})} className="w-full border rounded-lg p-3" min="0" max="100" step="0.1" />
                                 </div>
                             </div>
                             <div>
@@ -2498,7 +2475,7 @@ return (
                         <div className="space-y-4">
                             <div>
                                 <label className="block text-gray-700 font-medium mb-2">Valor (€) *</label>
-                                <input type="number" value={creditForm.amount} onChange={(e) => setCreditForm({...creditForm, amount: e.target.value})} className="w-full border rounded-lg p-3" step="0.01" />
+                                <input type="number" value={creditForm.amount} onChange={(e) => setCreditForm({...creditForm, amount: e.target.value})} className="w-full border rounded-lg p-3" step="0.01" min="0" />
                             </div>
                             <div>
                                 <label className="block text-gray-700 font-medium mb-2">Data de Vencimento *</label>
