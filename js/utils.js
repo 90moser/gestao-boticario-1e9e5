@@ -18,7 +18,11 @@ function generateId() {
 }
 
 function formatCurrency(value) {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+    return new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(value);
+}
+
+function safeNumber(value) {
+    return isNaN(value) || !isFinite(value) ? 0 : value;
 }
 
 function formatDate(date) {

@@ -184,9 +184,9 @@ function App() {
 
     const calculateAveragePrice = (productId) => {
         const productPurchases = purchases.filter(p => p.productId === productId);
-        if (productPurchases.length === 0) return 0;
-        const totalValue = productPurchases.reduce((sum, p) => sum + (p.price * p.quantity), 0);
-        const totalQuantity = productPurchases.reduce((sum, p) => sum + parseInt(p.quantity), 0);
+        if (!productPurchases || productPurchases.length === 0) return 0;
+        const totalValue = productPurchases.reduce((sum, p) => sum + (parseFloat(p.price || 0) * parseInt(p.quantity || 0)), 0);
+        const totalQuantity = productPurchases.reduce((sum, p) => sum + parseInt(p.quantity || 0), 0);
         return totalQuantity > 0 ? totalValue / totalQuantity : 0;
     };
 
@@ -262,7 +262,7 @@ function App() {
         const monthlySales = sales.filter(s => new Date(s.date) >= start && new Date(s.date) <= end);
         const monthlyPurchases = purchases.filter(p => new Date(p.date) >= start && new Date(p.date) <= end);
         const monthlyResellerSales = resellerSales.filter(s => new Date(s.date) >= start && new Date(s.date) <= end);
-        const totalInvested = monthlyPurchases.reduce((sum, p) => sum + (p.price * p.quantity), 0);
+        const totalInvested = monthlyPurchases.reduce((sum, p) => sum + (parseFloat(p.price || 0) * parseInt(p.quantity || 0)), 0);
         const directProfit = monthlySales.reduce((sum, s) => sum + ((s.price - calculateAveragePrice(s.productId)) * s.quantity), 0);
         const directRevenue = monthlySales.reduce((sum, s) => sum + (s.price * s.quantity), 0);
         const resellerRevenue = monthlyResellerSales.reduce((sum, sale) => {
@@ -301,7 +301,8 @@ function App() {
         products.forEach(p => {
             const stock = calculateStock(p.id);
             if (stock > 0) {
-                totalPaidValue += stock * calculateAveragePrice(p.id);
+                const avgPrice = calculateAveragePrice(p.id);
+                totalPaidValue += stock * (isNaN(avgPrice) ? 0 : avgPrice);
                 totalSaleValue += stock * (parseFloat(p.catalogPrice) || 0);
             }
         });
@@ -722,9 +723,9 @@ function App() {
                 {activeTab === 'dashboard' && (
                     <div className="space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                            <StatCard title="Vendas do Mês" value={formatCurrency(financialReport.totalSold)} icon="fa-shopping-cart" color="border-green-400" />
-                            <StatCard title="Investido no Mês" value={formatCurrency(financialReport.totalInvested)} icon="fa-wallet" color="border-red-400" />
-                            <StatCard title="Lucro Líquido" value={formatCurrency(financialReport.totalProfit)} icon="fa-coins" color="border-blue-400" />
+                            <StatCard title="Vendas do Mês" value={formatCurrency(safeNumber(financialReport.totalSold))} icon="fa-shopping-cart" color="border-green-400" />
+                            <StatCard title="Investido no Mês" value={formatCurrency(safeNumber(financialReport.totalInvested))} icon="fa-wallet" color="border-red-400" />
+                            <StatCard title="Lucro Líquido" value={formatCurrency(safeNumber(financialReport.totalProfit))} icon="fa-coins" color="border-blue-400" />
                             <StatCard title="Fiado Pendente" value={formatCurrency(pendingCreditSales.reduce((sum, c) => sum + c.amount, 0))} icon="fa-hand-holding-usd" color="border-yellow-400" />
                         </div>
                         {resellers.length > 0 && (
@@ -735,9 +736,9 @@ function App() {
                             </div>
                         )}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <StatCard title="📦 Estoque (Preço Pago)" value={formatCurrency(stockValueReport.totalPaidValue)} icon="fa-boxes" color="border-purple-400" smallText="Quanto investiu" />
-                            <StatCard title="💰 Estoque (Preço Venda)" value={formatCurrency(stockValueReport.totalSaleValue)} icon="fa-tag" color="border-green-400" smallText="Preço catálogo" />
-                            <StatCard title="🎯 Lucro Potencial" value={formatCurrency(stockValueReport.potentialProfit)} icon="fa-chart-line" color={stockValueReport.potentialProfit >= 0 ? "border-green-400" : "border-red-400"} smallText={`Margem: ${stockValueReport.profitMargin.toFixed(1)}%`} />
+                            <StatCard title="📦 Estoque (Preço Pago)" value={formatCurrency(safeNumber(stockValueReport.totalPaidValue))} icon="fa-boxes" color="border-purple-400" smallText="Quanto investiu" />
+                            <StatCard title="💰 Estoque (Preço Venda)" value={formatCurrency(safeNumber(stockValueReport.totalSaleValue))} icon="fa-tag" color="border-green-400" smallText="Preço catálogo" />
+                            <StatCard title="🎯 Lucro Potencial" value={formatCurrency(safeNumber(stockValueReport.potentialProfit))} icon="fa-chart-line" color={stockValueReport.potentialProfit >= 0 ? "border-green-400" : "border-red-400"} smallText={`Margem: ${safeNumber(stockValueReport.profitMargin).toFixed(1)}%`} />
                         </div>
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                             {lowStockProducts.length > 0 && (<div className="alert-red rounded-lg p-4"><h3 className="font-bold text-red-800 mb-2"><i className="fas fa-exclamation-triangle mr-2"></i>Estoque Baixo ({lowStockProducts.length})</h3><ul className="space-y-1">{lowStockProducts.slice(0, 5).map(p => <li key={p.id} className="text-red-700 text-sm">• {p.name} - {calculateStock(p.id)} un.</li>)}</ul></div>)}
@@ -759,9 +760,9 @@ function App() {
                         </div>
                         <FilterBar searchTerm={stockSearchTerm} onSearchChange={setStockSearchTerm} categoryFilter={stockCategoryFilter} onCategoryChange={setStockCategoryFilter} statusFilter={stockStatusFilter} onStatusChange={setStockStatusFilter} sortBy={stockSortBy} onSortChange={setStockSortBy} expiryFilter={stockExpiryFilter} onExpiryChange={setStockExpiryFilter} totalItems={products.length} filteredItems={filteredStock.length} onExport={() => exportProductsCSV(filteredStock, `stock_boticario_${new Date().toISOString().split('T')[0]}.csv`)} />
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg p-4"><p className="text-purple-100 text-sm">Valor Pago em Stock</p><p className="text-2xl font-bold">{formatCurrency(stockValueReport.totalPaidValue)}</p></div>
-                            <div className="bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg p-4"><p className="text-green-100 text-sm">Valor Venda em Stock</p><p className="text-2xl font-bold">{formatCurrency(stockValueReport.totalSaleValue)}</p></div>
-                            <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg p-4"><p className="text-blue-100 text-sm">Lucro Potencial</p><p className="text-2xl font-bold">{formatCurrency(stockValueReport.potentialProfit)}</p></div>
+                            <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg p-4"><p className="text-purple-100 text-sm">Valor Pago em Stock</p><p className="text-2xl font-bold">{formatCurrency(safeNumber(stockValueReport.totalPaidValue))}</p></div>
+                            <div className="bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg p-4"><p className="text-green-100 text-sm">Valor Venda em Stock</p><p className="text-2xl font-bold">{formatCurrency(safeNumber(stockValueReport.totalSaleValue))}</p></div>
+                            <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg p-4"><p className="text-blue-100 text-sm">Lucro Potencial</p><p className="text-2xl font-bold">{formatCurrency(safeNumber(stockValueReport.potentialProfit))}</p></div>
                         </div>
                         <div className="bg-white rounded-lg shadow-md overflow-x-auto">
                             <table className="w-full min-w-[1200px]">
@@ -1059,9 +1060,9 @@ function App() {
                     <div className="space-y-4">
                         <h2 className="text-2xl font-bold text-gray-800">Relatórios Financeiros</h2>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg p-4"><p className="text-green-100 text-sm">Total Vendido (Mês)</p><p className="text-2xl font-bold">{formatCurrency(financialReport.totalSold)}</p></div>
-                            <div className="bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg p-4"><p className="text-red-100 text-sm">Total Investido (Mês)</p><p className="text-2xl font-bold">{formatCurrency(financialReport.totalInvested)}</p></div>
-                            <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg p-4"><p className="text-purple-100 text-sm">Lucro Líquido (Mês)</p><p className="text-2xl font-bold">{formatCurrency(financialReport.totalProfit)}</p></div>
+                            <div className="bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg p-4"><p className="text-green-100 text-sm">Total Vendido (Mês)</p><p className="text-2xl font-bold">{formatCurrency(safeNumber(financialReport.totalSold))}</p></div>
+                            <div className="bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg p-4"><p className="text-red-100 text-sm">Total Investido (Mês)</p><p className="text-2xl font-bold">{formatCurrency(safeNumber(financialReport.totalInvested))}</p></div>
+                            <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg p-4"><p className="text-purple-100 text-sm">Lucro Líquido (Mês)</p><p className="text-2xl font-bold">{formatCurrency(safeNumber(financialReport.totalProfit))}</p></div>
                         </div>
                     </div>
                 )}
