@@ -464,6 +464,8 @@
             const [selectedReseller, setSelectedReseller] = useState(null);
 const [showInventoryModal, setShowInventoryModal] = useState(false);
 const [selectedResellerInventory, setSelectedResellerInventory] = useState(null);
+const [editingStockItemId, setEditingStockItemId] = useState(null);
+const [editingStockQty, setEditingStockQty] = useState('');
 const [showSalesHistoryModal, setShowSalesHistoryModal] = useState(false);
 const [selectedResellerForHistory, setSelectedResellerForHistory] = useState(null);
             const [quickBuyProduct, setQuickBuyProduct] = useState(null);
@@ -2034,7 +2036,7 @@ return (
                         </div>
                     </Modal>
 {/* Modal Visualizar e Editar Inventário do Revendedor */}
-<Modal isOpen={showInventoryModal} onClose={() => { setShowInventoryModal(false); setSelectedResellerInventory(null); }} title={`📦 Stock: ${selectedResellerInventory?.salonName}`}>
+<Modal isOpen={showInventoryModal} onClose={() => { setShowInventoryModal(false); setSelectedResellerInventory(null); setEditingStockItemId(null); }} title={`📦 Stock: ${selectedResellerInventory?.salonName}`}>
     <div className="space-y-4">
         <div className="bg-blue-50 p-3 rounded-lg flex items-center gap-3">
             <i className="fas fa-info-circle text-blue-600"></i>
@@ -2047,7 +2049,7 @@ return (
                     <tr>
                         <th className="p-3 text-left">Produto</th>
                         <th className="p-3 text-center">Stock</th>
-                        <th className="p-3 text-center">Editar</th>
+                        <th className="p-3 text-center">Ações</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -2055,54 +2057,81 @@ return (
                         .filter(item => item.resellerId === selectedResellerInventory.id && item.quantity > 0)
                         .map(item => {
                             const prod = products.find(p => p.id === item.productId);
+                            const isEditing = editingStockItemId === item.id;
                             return (
                                 <tr key={item.id} className="border-t hover:bg-gray-50">
                                     <td className="p-3 font-medium">{prod ? prod.name : 'Produto não encontrado'}</td>
                                     <td className="p-3 text-center">
-                                        <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full font-bold">
-                                            {item.quantity} un.
-                                        </span>
+                                        {isEditing ? (
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                value={editingStockQty}
+                                                onChange={(e) => setEditingStockQty(e.target.value)}
+                                                className="w-20 border-2 border-blue-400 rounded-lg px-2 py-1 text-center font-bold focus:outline-none"
+                                                autoFocus
+                                            />
+                                        ) : (
+                                            <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full font-bold">
+                                                {item.quantity} un.
+                                            </span>
+                                        )}
                                     </td>
-                                    <td className="p-3 text-center flex justify-center gap-2">
-                                        {/* Botão de Editar Quantidade manualmente */}
-                                        <button 
-                                            onClick={() => {
-                                                const newQty = prompt(`Nova quantidade para ${prod?.name}:`, item.quantity);
-                                                if (newQty !== null && !isNaN(newQty) && parseInt(newQty) >= 0) {
-                                                    const updatedStock = resellerStock.map(stockItem => {
-                                                        if (stockItem.id === item.id) return { ...stockItem, quantity: parseInt(newQty) };
-                                                        return stockItem;
-                                                    });
-                                                    setResellerStock(updatedStock);
-                                                }
-                                            }}
-                                            className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded transition" title="Editar Stock"
-                                        >
-                                            <i className="fas fa-edit"></i>
-                                        </button>
-                                        
-                                        {/* Botão de Zerar (Apagar da maleta) */}
-                                        <button 
-                                            onClick={() => {
-                                                if(window.confirm(`Tem certeza que deseja remover ${prod?.name} do stock deste revendedor?`)) {
-                                                    const updatedStock = resellerStock.map(stockItem => {
-                                                        if (stockItem.id === item.id) return { ...stockItem, quantity: 0 };
-                                                        return stockItem;
-                                                    });
-                                                    setResellerStock(updatedStock);
-                                                }
-                                            }}
-                                            className="bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded transition" title="Remover do Revendedor"
-                                        >
-                                            <i className="fas fa-trash"></i>
-                                        </button>
+                                    <td className="p-3 text-center">
+                                        <div className="flex justify-center gap-2">
+                                            {isEditing ? (
+                                                <>
+                                                    <button
+                                                        onClick={() => {
+                                                            const newQty = parseInt(editingStockQty);
+                                                            if (!isNaN(newQty) && newQty >= 0) {
+                                                                setResellerStock(resellerStock.map(s => s.id === item.id ? { ...s, quantity: newQty } : s));
+                                                            }
+                                                            setEditingStockItemId(null);
+                                                        }}
+                                                        className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded transition text-xs font-bold"
+                                                        title="Confirmar"
+                                                    >
+                                                        <i className="fas fa-check"></i>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setEditingStockItemId(null)}
+                                                        className="bg-gray-300 hover:bg-gray-400 text-gray-700 px-3 py-1 rounded transition text-xs"
+                                                        title="Cancelar"
+                                                    >
+                                                        <i className="fas fa-times"></i>
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <button
+                                                        onClick={() => { setEditingStockItemId(item.id); setEditingStockQty(String(item.quantity)); }}
+                                                        className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded transition"
+                                                        title="Editar quantidade"
+                                                    >
+                                                        <i className="fas fa-edit"></i>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            if (window.confirm(`Remover ${prod?.name} do stock deste revendedor?`)) {
+                                                                setResellerStock(resellerStock.map(s => s.id === item.id ? { ...s, quantity: 0 } : s));
+                                                            }
+                                                        }}
+                                                        className="bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded transition"
+                                                        title="Remover do Revendedor"
+                                                    >
+                                                        <i className="fas fa-trash"></i>
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
                                     </td>
                                 </tr>
                             );
                         })}
                 </tbody>
             </table>
-            
+
             {(!selectedResellerInventory || resellerStock.filter(item => item.resellerId === selectedResellerInventory.id && item.quantity > 0).length === 0) && (
                 <div className="p-8 text-center text-gray-500">
                     <i className="fas fa-box-open text-3xl mb-2 block opacity-30"></i>
@@ -2110,8 +2139,8 @@ return (
                 </div>
             )}
         </div>
-        
-        <button onClick={() => { setShowInventoryModal(false); setSelectedResellerInventory(null); }} className="w-full bg-gray-800 text-white px-6 py-3 rounded-lg font-bold hover:bg-gray-700 transition">
+
+        <button onClick={() => { setShowInventoryModal(false); setSelectedResellerInventory(null); setEditingStockItemId(null); }} className="w-full bg-gray-800 text-white px-6 py-3 rounded-lg font-bold hover:bg-gray-700 transition">
             Fechar
         </button>
     </div>
