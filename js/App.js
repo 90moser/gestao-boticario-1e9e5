@@ -1183,6 +1183,48 @@ function App() {
                 {activeTab === 'config' && (
                     <div className="space-y-4">
                         <h2 className="text-2xl font-bold text-gray-800">Configurações</h2>
+                        <div className="bg-orange-50 border-2 border-orange-400 rounded-xl p-4">
+                            <h3 className="text-lg font-bold text-orange-800 mb-2"><i className="fas fa-wrench mr-2"></i>🔧 Migrar Dados</h3>
+                            <p className="text-sm text-orange-700 mb-3">Faz merge de todos os documentos do Firestore (banco_principal + {user.uid}) num único documento unificado. Usar apenas uma vez.</p>
+                            <button onClick={async () => {
+                                if (!confirm('Vai fazer merge de banco_principal + ' + user.uid + '. Continuar?')) return;
+                                const docs = ['banco_principal', user.uid];
+                                let dadosMergidos = { products: [], purchases: [], sales: [], customers: [], creditSales: [], resellers: [], resellerStock: [], resellerSales: [], resellerReturns: [], stockAdjustments: [] };
+                                const mergeArray = (existing, newItems) => {
+                                    if (!newItems || !newItems.length) return existing;
+                                    const ids = new Set(existing.map(i => i.id));
+                                    return [...existing, ...newItems.filter(i => !ids.has(i.id))];
+                                };
+                                for (const docId of docs) {
+                                    const doc = await db.collection('app_boticario').doc(docId).get();
+                                    if (doc.exists) {
+                                        const data = doc.data();
+                                        dadosMergidos.products = mergeArray(dadosMergidos.products, data.products);
+                                        dadosMergidos.purchases = mergeArray(dadosMergidos.purchases, data.purchases);
+                                        dadosMergidos.sales = mergeArray(dadosMergidos.sales, data.sales);
+                                        dadosMergidos.customers = mergeArray(dadosMergidos.customers, data.customers);
+                                        dadosMergidos.creditSales = mergeArray(dadosMergidos.creditSales, data.creditSales);
+                                        dadosMergidos.resellers = mergeArray(dadosMergidos.resellers, data.resellers);
+                                        dadosMergidos.resellerStock = mergeArray(dadosMergidos.resellerStock, data.resellerStock);
+                                        dadosMergidos.resellerSales = mergeArray(dadosMergidos.resellerSales, data.resellerSales);
+                                        dadosMergidos.resellerReturns = mergeArray(dadosMergidos.resellerReturns, data.resellerReturns);
+                                        dadosMergidos.stockAdjustments = mergeArray(dadosMergidos.stockAdjustments, data.stockAdjustments);
+                                    }
+                                }
+                                await db.collection('app_boticario').doc('banco_principal').set(dadosMergidos);
+                                setProducts(dadosMergidos.products);
+                                setPurchases(dadosMergidos.purchases);
+                                setSales(dadosMergidos.sales);
+                                setCustomers(dadosMergidos.customers);
+                                setCreditSales(dadosMergidos.creditSales);
+                                setResellers(dadosMergidos.resellers);
+                                setResellerStock(dadosMergidos.resellerStock);
+                                setResellerSales(dadosMergidos.resellerSales);
+                                setResellerReturns(dadosMergidos.resellerReturns);
+                                setStockAdjustments(dadosMergidos.stockAdjustments);
+                                alert('✅ Migração concluída!\nProdutos: ' + dadosMergidos.products.length + '\nVendas: ' + dadosMergidos.sales.length + '\nCompras: ' + dadosMergidos.purchases.length + '\nRevendedores: ' + dadosMergidos.resellers.length);
+                            }} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-bold text-sm"><i className="fas fa-database mr-2"></i>Executar Migração</button>
+                        </div>
                         <div className="bg-white rounded-xl shadow-md p-4 mb-4">
                             <div className="flex justify-between items-center mb-3">
                                 <h3 className="text-lg font-bold text-gray-800"><i className="fas fa-users mr-2 text-purple-600"></i>Equipa Comercial</h3>
