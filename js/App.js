@@ -215,6 +215,7 @@ function App() {
         if (!user) return;
         const dataUid = (userProfile && userProfile.role === 'comercial') ? userProfile.adminUid : user.uid;
         const unsubscribe = db.collection('app_boticario').doc(dataUid).onSnapshot((doc) => {
+            console.log("📦 Firestore data received:", doc.exists, doc.data());
             if (doc.exists) {
                 const data = doc.data();
                 isReceivingData.current = true;
@@ -228,7 +229,7 @@ function App() {
                 if (data.resellerSales) setResellerSales(data.resellerSales);
                 if (data.resellerReturns) setResellerReturns(data.resellerReturns);
                 if (data.stockAdjustments) setStockAdjustments(data.stockAdjustments);
-                setTimeout(() => { isReceivingData.current = false; }, 1000);
+                setTimeout(() => { isReceivingData.current = false; }, 2000);
             } else {
                 setProducts([]); setPurchases([]); setSales([]); setCustomers([]);
                 setCreditSales([]); setResellers([]); setResellerStock([]);
@@ -773,6 +774,7 @@ function App() {
                         <button onClick={triggerImport} className="bg-green-600 hover:bg-green-700 px-3 py-2 rounded-lg transition text-sm"><i className="fas fa-upload mr-2"></i><span className="hidden sm:inline">Importar</span></button>
                         <button onClick={exportData} className="bg-white/20 hover:bg-white/30 px-3 py-2 rounded-lg transition text-sm"><i className="fas fa-download mr-2"></i><span className="hidden sm:inline">Exportar</span></button>
                         <button onClick={() => setActiveTab('config')} className="bg-white/20 hover:bg-white/30 px-3 py-2 rounded-lg transition"><i className="fas fa-cog"></i></button>
+                        <button onClick={async () => { const doc = await db.collection('app_boticario').doc(user.uid).get(); console.log('UID:', user.uid); console.log('Doc exists:', doc.exists); console.log('Data:', JSON.stringify(doc.data())); alert('UID: ' + user.uid + '\nDoc exists: ' + doc.exists + '\nProdutos: ' + (doc.data()?.products?.length || 0)); }} className="bg-red-500 text-white px-2 py-1 rounded text-xs">DEBUG</button>
                         <button onClick={handleLogout} className="bg-red-500/30 hover:bg-red-500/50 px-3 py-2 rounded-lg transition text-sm" title="Sair"><i className="fas fa-sign-out-alt mr-1"></i><span className="hidden sm:inline">Sair</span></button>
                     </div>
                 </div>
