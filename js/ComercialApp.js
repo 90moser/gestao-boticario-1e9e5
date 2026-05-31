@@ -103,7 +103,7 @@ window.ComercialApp = function ComercialApp({ user, userProfile, allData, onLogo
 
     const handleRegisterVisit = (resellerId) => {
         const today = new Date().toISOString().split('T')[0];
-        const ref = db.collection('app_boticario').doc(allData.adminUid);
+        const ref = db.collection('app_boticario').doc('banco_principal');
         ref.get().then(doc => {
             if (doc.exists) {
                 const data = doc.data();
@@ -123,7 +123,7 @@ window.ComercialApp = function ComercialApp({ user, userProfile, allData, onLogo
         const price = salonSaleForm.salePrice ? parseFloat(salonSaleForm.salePrice) : parseFloat(product?.catalogPrice || 0);
         const newSale = { id: generateId(), resellerId: selectedSalon.id, productId: salonSaleForm.productId, quantity: qty, salePrice: price, date: new Date().toISOString().split('T')[0], timestamp: new Date().toISOString(), comercialId: user.uid, comercialName: userProfile.name };
 
-        const ref = db.collection('app_boticario').doc(allData.adminUid);
+        const ref = db.collection('app_boticario').doc('banco_principal');
         ref.get().then(doc => {
             if (!doc.exists) return;
             const data = doc.data();
@@ -147,7 +147,7 @@ window.ComercialApp = function ComercialApp({ user, userProfile, allData, onLogo
         const product = products.find(p => p.id === directSaleForm.productId);
         const newSale = { id: generateId(), productId: directSaleForm.productId, customerId: '', quantity: qty, price: parseFloat(directSaleForm.price), paymentMethod: 'dinheiro', date: directSaleForm.date || new Date().toISOString().split('T')[0], profit: 0, clientName: directSaleForm.clientName, comercialId: user.uid, comercialName: userProfile.name };
 
-        const ref = db.collection('app_boticario').doc(allData.adminUid);
+        const ref = db.collection('app_boticario').doc('banco_principal');
         ref.get().then(doc => {
             if (!doc.exists) return;
             const data = doc.data();

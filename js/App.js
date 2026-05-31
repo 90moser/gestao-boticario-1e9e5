@@ -99,7 +99,7 @@ function App() {
     const handleApproveOrder = async (order) => {
         const newTransfer = { id: generateId(), resellerId: order.resellerId, productId: order.productId, quantity: parseInt(order.quantity), date: new Date().toISOString().split('T')[0], notes: 'Aprovado de encomenda' };
         const newResellerStock = [...resellerStock, newTransfer];
-        await db.collection('app_boticario').doc(user.uid).update({ resellerStock: newResellerStock });
+        await db.collection('app_boticario').doc('banco_principal').update({ resellerStock: newResellerStock });
         await db.collection('orders').doc(order.id).update({ status: 'aprovado', approvedAt: new Date().toISOString() });
     };
 
@@ -213,8 +213,7 @@ function App() {
 
     useEffect(() => {
         if (!user) return;
-        const dataUid = (userProfile && userProfile.role === 'comercial') ? userProfile.adminUid : user.uid;
-        const unsubscribe = db.collection('app_boticario').doc(dataUid).onSnapshot((doc) => {
+        const unsubscribe = db.collection('app_boticario').doc('banco_principal').onSnapshot((doc) => {
             console.log("📦 Firestore data received:", doc.exists, doc.data());
             if (doc.exists) {
                 const data = doc.data();
@@ -250,7 +249,7 @@ function App() {
             resellerSales: resellerSales || [], resellerReturns: resellerReturns || [],
             stockAdjustments: stockAdjustments || []
         };
-        db.collection('app_boticario').doc(user.uid).set(saveData)
+        db.collection('app_boticario').doc('banco_principal').set(saveData)
             .then(() => console.log("Nuvem privada atualizada!"))
             .catch(error => console.error("Erro na nuvem:", error));
     }, [products, purchases, sales, customers, creditSales, resellers, resellerStock, resellerSales, resellerReturns, stockAdjustments, user]);
@@ -774,7 +773,7 @@ function App() {
                         <button onClick={triggerImport} className="bg-green-600 hover:bg-green-700 px-3 py-2 rounded-lg transition text-sm"><i className="fas fa-upload mr-2"></i><span className="hidden sm:inline">Importar</span></button>
                         <button onClick={exportData} className="bg-white/20 hover:bg-white/30 px-3 py-2 rounded-lg transition text-sm"><i className="fas fa-download mr-2"></i><span className="hidden sm:inline">Exportar</span></button>
                         <button onClick={() => setActiveTab('config')} className="bg-white/20 hover:bg-white/30 px-3 py-2 rounded-lg transition"><i className="fas fa-cog"></i></button>
-                        <button onClick={async () => { const doc = await db.collection('app_boticario').doc(user.uid).get(); console.log('UID:', user.uid); console.log('Doc exists:', doc.exists); console.log('Data:', JSON.stringify(doc.data())); alert('UID: ' + user.uid + '\nDoc exists: ' + doc.exists + '\nProdutos: ' + (doc.data()?.products?.length || 0)); }} className="bg-red-500 text-white px-2 py-1 rounded text-xs">DEBUG</button>
+                        <button onClick={async () => { const doc = await db.collection('app_boticario').doc('banco_principal').get(); console.log('Doc exists:', doc.exists); console.log('Data:', JSON.stringify(doc.data())); alert('Doc exists: ' + doc.exists + '\nProdutos: ' + (doc.data()?.products?.length || 0)); }} className="bg-red-500 text-white px-2 py-1 rounded text-xs">DEBUG</button>
                         <button onClick={handleLogout} className="bg-red-500/30 hover:bg-red-500/50 px-3 py-2 rounded-lg transition text-sm" title="Sair"><i className="fas fa-sign-out-alt mr-1"></i><span className="hidden sm:inline">Sair</span></button>
                     </div>
                 </div>
