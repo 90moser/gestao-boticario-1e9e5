@@ -1185,6 +1185,40 @@ const handleResellerSale = () => {
                                     {isRegistering ? 'Já tem conta? Entrar' : 'Não tem conta? Cadastrar'}
                                 </button>
                             </div>
+                            <div className="mt-4 pt-4 border-t border-gray-200">
+                                <button onClick={async () => {
+                                    try {
+                                        const doc1 = await db.collection('app_boticario').doc('banco_principal').get();
+                                        const doc2 = await db.collection('app_boticario').doc('yYyTI37vC8MvHqKt1prZ1LbCWZd2').get();
+                                        const data1 = doc1.exists ? doc1.data() : {};
+                                        const data2 = doc2.exists ? doc2.data() : {};
+                                        const mergeArray = (arr1, arr2) => {
+                                            const base = arr1 || [];
+                                            const nova = arr2 || [];
+                                            const ids = new Set(base.map(i => i.id));
+                                            return [...base, ...nova.filter(i => !ids.has(i.id))];
+                                        };
+                                        const dadosFinais = {
+                                            products: mergeArray(data1.products, data2.products),
+                                            purchases: mergeArray(data1.purchases, data2.purchases),
+                                            sales: mergeArray(data1.sales, data2.sales),
+                                            customers: mergeArray(data1.customers, data2.customers),
+                                            creditSales: mergeArray(data1.creditSales, data2.creditSales),
+                                            resellers: mergeArray(data1.resellers, data2.resellers),
+                                            resellerStock: mergeArray(data1.resellerStock, data2.resellerStock),
+                                            resellerSales: mergeArray(data1.resellerSales, data2.resellerSales),
+                                            resellerReturns: mergeArray(data1.resellerReturns, data2.resellerReturns),
+                                            stockAdjustments: mergeArray(data1.stockAdjustments, data2.stockAdjustments)
+                                        };
+                                        await db.collection('app_boticario').doc('banco_principal').set(dadosFinais);
+                                        alert('✅ DADOS RECUPERADOS COM SUCESSO!\n\nProdutos: ' + dadosFinais.products.length + '\nCompras: ' + dadosFinais.purchases.length + '\nVendas: ' + dadosFinais.sales.length + '\nRevendedores: ' + dadosFinais.resellers.length + '\nClientes: ' + dadosFinais.customers.length + '\n\nFaz login normalmente agora!');
+                                    } catch(e) {
+                                        alert('Erro: ' + e.message);
+                                    }
+                                }} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg">
+                                    🔧 Recuperar Dados
+                                </button>
+                            </div>
                         </div>
                     </div>
                 );
