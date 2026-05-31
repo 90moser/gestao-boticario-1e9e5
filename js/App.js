@@ -13,7 +13,7 @@ function App() {
     const [comerciais, setComerciais] = useState([]);
     const [pendingOrders, setPendingOrders] = useState([]);
     const [showComercialModal, setShowComercialModal] = useState(false);
-    const [comercialForm, setComercialForm] = useState({ name: '', username: '', commissionReseller: 10, commissionDirect: 25 });
+    const [comercialForm, setComercialForm] = useState({ name: '', username: '', password: '', zone: '', commissionReseller: 10, commissionDirect: 25 });
     const [showAssignSalonsModal, setShowAssignSalonsModal] = useState(false);
     const [editingComercial, setEditingComercial] = useState(null);
 
@@ -58,7 +58,7 @@ function App() {
 
     useEffect(() => {
         if (!user || !userProfile || userProfile.role !== 'admin') return;
-        const unsub = db.collection('orders').where('adminUid', '==', user.uid).where('status', '==', 'pending').onSnapshot(snap => {
+        const unsub = db.collection('orders').where('adminUid', '==', user.uid).where('status', '==', 'pendente').onSnapshot(snap => {
             setPendingOrders(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         });
         return () => unsub();
@@ -82,15 +82,16 @@ function App() {
 
     const handleCreateComercial = async () => {
         if (!comercialForm.name || !comercialForm.username) return alert('Nome e username são obrigatórios');
+        if (!comercialForm.password || comercialForm.password.length < 6) return alert('Senha deve ter pelo menos 6 caracteres');
         const email = comercialForm.username + '@boticario.internal';
-        const tempPassword = 'boticario123';
         try {
-            const cred = await auth.createUserWithEmailAndPassword(email, tempPassword);
-            const profile = { role: 'comercial', name: comercialForm.name, username: comercialForm.username, adminUid: user.uid, commissionReseller: parseFloat(comercialForm.commissionReseller) || 10, commissionDirect: parseFloat(comercialForm.commissionDirect) || 25, assignedResellers: [], active: true, createdAt: new Date().toISOString(), uid: cred.user.uid };
+            const cred = await auth.createUserWithEmailAndPassword(email, comercialForm.password);
+            const profile = { role: 'comercial', name: comercialForm.name, username: comercialForm.username, zone: comercialForm.zone || '', adminUid: user.uid, commissionReseller: parseFloat(comercialForm.commissionReseller) || 10, commissionDirect: parseFloat(comercialForm.commissionDirect) || 25, assignedResellers: [], active: true, createdAt: new Date().toISOString(), uid: cred.user.uid };
             await db.collection('users').doc(cred.user.uid).set(profile);
-            setComercialForm({ name: '', username: '', commissionReseller: 10, commissionDirect: 25 });
+            await db.collection('app_boticario').doc(cred.user.uid).set({});
+            setComercialForm({ name: '', username: '', password: '', zone: '', commissionReseller: 10, commissionDirect: 25 });
             setShowComercialModal(false);
-            alert(`Comercial criada!\nUsername: ${comercialForm.username}\nSenha inicial: ${tempPassword}`);
+            alert(`Comercial criada! ✅\nLogin: ${comercialForm.username}\nSenha: ${comercialForm.password}`);
         } catch (e) {
             alert('Erro: ' + e.message);
         }
@@ -100,11 +101,11 @@ function App() {
         const newTransfer = { id: generateId(), resellerId: order.resellerId, productId: order.productId, quantity: parseInt(order.quantity), date: new Date().toISOString().split('T')[0], notes: 'Aprovado de encomenda' };
         const newResellerStock = [...resellerStock, newTransfer];
         await db.collection('app_boticario').doc(user.uid).update({ resellerStock: newResellerStock });
-        await db.collection('orders').doc(order.id).update({ status: 'approved', approvedAt: new Date().toISOString() });
+        await db.collection('orders').doc(order.id).update({ status: 'aprovado', approvedAt: new Date().toISOString() });
     };
 
     const handleRejectOrder = async (order) => {
-        await db.collection('orders').doc(order.id).update({ status: 'rejected', rejectedAt: new Date().toISOString() });
+        await db.collection('orders').doc(order.id).update({ status: 'rejeitado', rejectedAt: new Date().toISOString() });
     };
 
     const [products, setProducts] = useState([]);
@@ -797,6 +798,7 @@ function App() {
                                 <span className="hidden md:inline">{tab.label}</span>
                                 {tab.id === 'resellers' && resellers.length > 0 && <span className="bg-purple-600 text-white text-xs px-2 py-0.5 rounded-full">{resellers.length}</span>}
                                 {tab.id === 'credits' && pendingCreditSales.length > 0 && <span className="bg-red-600 text-white text-xs px-2 py-0.5 rounded-full">{pendingCreditSales.length}</span>}
+                                {tab.id === 'stock' && pendingOrders.length > 0 && <span className="bg-red-600 text-white text-xs px-2 py-0.5 rounded-full">{pendingOrders.length}</span>}
                             </button>
                         ))}
                     </div>
@@ -1480,12 +1482,15 @@ function App() {
             <Modal isOpen={showComercialModal} onClose={() => setShowComercialModal(false)} title="Nova Comercial">
                 <div className="space-y-4">
                     <div><label className="block text-gray-700 font-medium mb-2">Nome Completo *</label><input type="text" value={comercialForm.name} onChange={(e) => setComercialForm({...comercialForm, name: e.target.value})} className="w-full border rounded-lg p-3" placeholder="Ex: Patrícia Silva" /></div>
-                    <div><label className="block text-gray-700 font-medium mb-2">Username (login) *</label><input type="text" value={comercialForm.username} onChange={(e) => setComercialForm({...comercialForm, username: e.target.value.toLowerCase().replace(/\s/g,'')})} className="w-full border rounded-lg p-3" placeholder="ex: patricia" /><p className="text-xs text-gray-400 mt-1">Login será: {comercialForm.username || 'username'}@boticario.internal</p></div>
                     <div className="grid grid-cols-2 gap-4">
-                        <div><label className="block text-gray-700 font-medium mb-2">Comissão Revendedores (%)</label><input type="number" value={comercialForm.commissionReseller} onChange={(e) => setComercialForm({...comercialForm, commissionReseller: e.target.value})} className="w-full border rounded-lg p-3" min="0" max="100" /></div>
-                        <div><label className="block text-gray-700 font-medium mb-2">Comissão Vendas Diretas (%)</label><input type="number" value={comercialForm.commissionDirect} onChange={(e) => setComercialForm({...comercialForm, commissionDirect: e.target.value})} className="w-full border rounded-lg p-3" min="0" max="100" /></div>
+                        <div><label className="block text-gray-700 font-medium mb-2">Username (login) *</label><input type="text" value={comercialForm.username} onChange={(e) => setComercialForm({...comercialForm, username: e.target.value.toLowerCase().replace(/\s/g,'')})} className="w-full border rounded-lg p-3" placeholder="ex: patricia" /><p className="text-xs text-gray-400 mt-1">{comercialForm.username || 'username'}@boticario.internal</p></div>
+                        <div><label className="block text-gray-700 font-medium mb-2">Zona</label><input type="text" value={comercialForm.zone} onChange={(e) => setComercialForm({...comercialForm, zone: e.target.value})} className="w-full border rounded-lg p-3" placeholder="Ex: Lisboa Norte" /></div>
                     </div>
-                    <div className="bg-yellow-50 border-l-4 border-yellow-400 p-3 text-sm text-yellow-800"><i className="fas fa-info-circle mr-2"></i>Senha inicial: <strong>boticario123</strong> — peça para alterar no primeiro acesso.</div>
+                    <div><label className="block text-gray-700 font-medium mb-2">Senha *</label><input type="password" value={comercialForm.password} onChange={(e) => setComercialForm({...comercialForm, password: e.target.value})} className="w-full border rounded-lg p-3" placeholder="Mínimo 6 caracteres" /></div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div><label className="block text-gray-700 font-medium mb-2">Comissão Salões (%)</label><input type="number" value={comercialForm.commissionReseller} onChange={(e) => setComercialForm({...comercialForm, commissionReseller: e.target.value})} className="w-full border rounded-lg p-3" min="0" max="100" /></div>
+                        <div><label className="block text-gray-700 font-medium mb-2">Comissão Diretas (%)</label><input type="number" value={comercialForm.commissionDirect} onChange={(e) => setComercialForm({...comercialForm, commissionDirect: e.target.value})} className="w-full border rounded-lg p-3" min="0" max="100" /></div>
+                    </div>
                     <button onClick={handleCreateComercial} className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-lg transition"><i className="fas fa-plus mr-2"></i>Criar Comercial</button>
                 </div>
             </Modal>

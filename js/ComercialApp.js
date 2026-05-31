@@ -161,7 +161,7 @@ window.ComercialApp = function ComercialApp({ user, userProfile, allData, onLogo
         if (!orderForm.resellerId || !orderForm.productId || orderForm.quantity <= 0) { alert('Preencha todos os campos'); return; }
         const reseller = resellers.find(r => r.id === orderForm.resellerId);
         const product = products.find(p => p.id === orderForm.productId);
-        const newOrder = { resellerId: orderForm.resellerId, resellerName: reseller?.salonName, productId: orderForm.productId, productName: product?.name, quantity: parseInt(orderForm.quantity), notes: orderForm.notes, status: 'pendente', comercialId: user.uid, comercialName: userProfile.name, createdAt: new Date().toISOString() };
+        const newOrder = { resellerId: orderForm.resellerId, resellerName: reseller?.salonName, productId: orderForm.productId, productName: product?.name, quantity: parseInt(orderForm.quantity), notes: orderForm.notes, status: 'pendente', comercialId: user.uid, comercialName: userProfile.name, adminUid: allData.adminUid, createdAt: new Date().toISOString() };
         db.collection('orders').add(newOrder).then(() => {
             setOrderForm({ resellerId: '', productId: '', quantity: 1, notes: '' });
             setShowOrderModal(false);
