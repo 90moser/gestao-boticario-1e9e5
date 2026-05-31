@@ -5,14 +5,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#667eea">
-<meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="O Boticário">
 
 <!-- Ícones para iOS -->
 <link rel="apple-touch-icon" sizes="180x180" href="icon-192.png">
-<link rel="apple-touch-icon" sizes="120x120" href="icon-120.png">
-<link rel="apple-touch-icon" sizes="152x152" href="icon-152.png">
 
 <!-- Ícones para Android -->
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
@@ -21,7 +18,6 @@
 <!-- Manifesto PWA -->
 <link rel="manifest" href="manifest.json">
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestão Revenda O Boticário</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -130,11 +126,19 @@
                 }
             }
             
-            // Configura timeouts e retry para operações de rede
-            db.settings({
-                cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED,
-                merge: true
-            });
+            // Configura timeouts e retry para operações de rede (apenas se não foi configurado antes)
+            try {
+                if (!db._settingsInitialized) {
+                    db.settings({
+                        cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED,
+                        merge: true
+                    });
+                    db._settingsInitialized = true;
+                    console.log("✅ Configurações do Firestore aplicadas");
+                }
+            } catch (error) {
+                console.warn("⚠️ Configurações do Firestore já foram aplicadas:", error.message);
+            }
             
             // Listener de conectividade
             window.addEventListener('online', () => {
@@ -191,8 +195,8 @@
             return "text-red-500"; // Atrasado (Vermelho)
         };
         const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
-        const formatCurrency = (value) => new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(value);
-        const formatDate = (date) => new Date(date).toLocaleDateString('pt-PT');
+        const formatCurrency = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+        const formatDate = (date) => new Date(date).toLocaleDateString('pt-BR');
         const calculateDaysUntilExpiry = (expiryDate) => {
             const today = new Date();
             const expiry = new Date(expiryDate);
@@ -301,7 +305,7 @@
         };
 
         // ==================== COMPONENTES ====================
-        const StatCard = ({ title, value, icon, color, subtitle, smallText }) => (
+        const StatCard = ({ title, value, icon, color, subtitle, smallText, subValues }) => (
             <div className={`bg-white rounded-lg p-4 md:p-6 card-hover shadow-md border-l-4 ${color}`}>
                 <div className="flex items-center justify-between">
                     <div>
@@ -309,6 +313,16 @@
                         <p className="text-xl md:text-2xl font-bold text-gray-800">{value}</p>
                         {subtitle && <p className="text-xs text-gray-400 mt-1">{subtitle}</p>}
                         {smallText && <p className="text-xs text-gray-500 mt-1">{smallText}</p>}
+                        {subValues && (
+                            <div className="mt-2 space-y-1">
+                                {subValues.map((subValue, index) => (
+                                    <div key={index} className="flex justify-between text-xs">
+                                        <span className="text-gray-600">{subValue.label}:</span>
+                                        <span className={`font-medium ${subValue.color || 'text-gray-800'}`}>{subValue.value}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                     <div className={`p-3 rounded-full ${color.replace('border-', 'bg-').replace('-400', '-100')}`}>
                         <i className={`fas ${icon} text-xl`}></i>
@@ -375,6 +389,9 @@
                 setResellers(updatedResellers);
                 // Como o Firebase já está escutando o 'resellers', ele vai salvar na nuvem automaticamente!
             };
+            
+            // Alias para compatibilidade com o código existente
+            const handleVisitReseller = handleRegisterVisit;
             const [products, setProducts] = useState([]);
             const [purchases, setPurchases] = useState([]);
             const [sales, setSales] = useState([]);
@@ -443,6 +460,8 @@
             const [selectedReseller, setSelectedReseller] = useState(null);
 const [showInventoryModal, setShowInventoryModal] = useState(false);
 const [selectedResellerInventory, setSelectedResellerInventory] = useState(null);
+const [showSalesHistoryModal, setShowSalesHistoryModal] = useState(false);
+const [selectedResellerForHistory, setSelectedResellerForHistory] = useState(null);
             const [quickBuyProduct, setQuickBuyProduct] = useState(null);
             const [adjustStockProduct, setAdjustStockProduct] = useState(null);
             
@@ -693,6 +712,8 @@ const [selectedResellerInventory, setSelectedResellerInventory] = useState(null)
             const stockValueReport = useMemo(() => {
                 let totalPaidValue = 0;
                 let totalSaleValue = 0;
+                
+                // 1. ESTOQUE FÍSICO (no depósito)
                 products.forEach(p => {
                     const stock = calculateStock(p.id);
                     if (stock > 0) {
@@ -700,7 +721,37 @@ const [selectedResellerInventory, setSelectedResellerInventory] = useState(null)
                         totalSaleValue += stock * (parseFloat(p.catalogPrice) || 0);
                     }
                 });
-                return { totalPaidValue, totalSaleValue, potentialProfit: totalSaleValue - totalPaidValue, profitMargin: totalPaidValue > 0 ? ((totalSaleValue - totalPaidValue) / totalPaidValue) * 100 : 0 };
+                
+                // 2. ESTOQUE EM COMODATO (com revendedores)
+                let resellerPaidValue = 0;
+                let resellerSaleValue = 0;
+                resellerStock.forEach(item => {
+                    if (item.quantity > 0) {
+                        const product = products.find(p => p.id === item.productId);
+                        if (product) {
+                            resellerPaidValue += item.quantity * (parseFloat(product.costPrice || 0));
+                            resellerSaleValue += item.quantity * (parseFloat(product.catalogPrice || 0));
+                        }
+                    }
+                });
+                
+                // 3. TOTAIS COMPLETOS
+                const totalPaidComplete = totalPaidValue + resellerPaidValue;
+                const totalSaleComplete = totalSaleValue + resellerSaleValue;
+                const potentialProfitComplete = totalSaleComplete - totalPaidComplete;
+                const profitMarginComplete = totalPaidComplete > 0 ? ((totalSaleComplete - totalPaidComplete) / totalPaidComplete) * 100 : 0;
+                
+                return { 
+                    totalPaidValue: totalPaidComplete, 
+                    totalSaleValue: totalSaleComplete, 
+                    potentialProfit: potentialProfitComplete, 
+                    profitMargin: profitMarginComplete,
+                    // Valores separados para UI detalhada
+                    physicalPaidValue: totalPaidValue,
+                    physicalSaleValue: totalSaleValue,
+                    resellerPaidValue: resellerPaidValue,
+                    resellerSaleValue: resellerSaleValue
+                };
             }, [products, purchases, sales, resellerStock, resellerSales, resellerReturns, stockAdjustments]);
 
             const customersWithStats = useMemo(() => {
@@ -820,14 +871,24 @@ const handleResellerSale = () => {
         return;
     }
 
-    // Verifica se o revendedor tem stock suficiente na maleta dele
-    const stockEntry = resellerStock.find(item => 
+    // 🔧 CORREÇÃO: Usa EXATAMENTE a mesma query da UI
+    const stockItems = resellerStock.filter(item => 
         item.resellerId === selectedReseller.id && 
         item.productId === resellerSaleForm.productId
     );
+    
+    // Se não encontrou nenhum item, estoque é 0
+    if (stockItems.length === 0) {
+        alert(`Erro: O revendedor não tem este produto em stock.\nEstoque disponível: 0\nQuantidade pedida: ${qty}`);
+        return;
+    }
 
-    if (!stockEntry || stockEntry.quantity < qty) {
-        alert("Erro: O revendedor não tem essa quantidade em stock para vender.");
+    // Soma todas as quantidades encontradas (exatamente como a UI faz)
+    const totalStockForProduct = stockItems.reduce((sum, item) => sum + parseInt(item.quantity || 0), 0);
+
+    // Valida usando o estoque somado igual à UI
+    if (totalStockForProduct < qty) {
+        alert(`Erro: O revendedor não tem essa quantidade em stock para vender.\nEstoque disponível: ${totalStockForProduct}\nQuantidade pedida: ${qty}`);
         return;
     }
 
@@ -851,15 +912,24 @@ const handleResellerSale = () => {
     };
     setResellerSales([...resellerSales, newSale]);
 
-    // Desconta o produto APENAS do stock do revendedor
+    // 🔧 CORREÇÃO: Subtrai do estoque existente em vez de criar novo documento
     const updatedResellerStock = resellerStock.map(item => {
-        if (item.resellerId === selectedReseller.id && item.productId === resellerSaleForm.productId) {
-            return { ...item, quantity: item.quantity - qty };
+        // Encontra o item correto do estoque do revendedor
+        if (item.resellerId === selectedReseller.id && 
+            item.productId === resellerSaleForm.productId && 
+            item.quantity > 0) {
+            
+            // Subtrai a quantidade vendida
+            const newQuantity = parseInt(item.quantity) - qty;
+            
+            // Se o estoque chegar a 0, mantém o item com quantity 0 para histórico
+            return { ...item, quantity: newQuantity };
         }
         return item;
     });
+    
+    // Aplica as atualizações no estoque
     setResellerStock(updatedResellerStock);
-
     setShowResellerSaleModal(false);
     setResellerSaleForm({ productId: '', quantity: 1, salePrice: '', date: new Date().toISOString().split('T')[0] });
 };
@@ -1199,6 +1269,11 @@ return (
                                             value={resellerStock.reduce((sum, t) => sum + (t.quantity > 0 ? t.quantity : 0), 0)} 
                                             icon="fa-boxes" 
                                             color="border-purple-400" 
+                                            smallText={`${resellerStock.reduce((sum, t) => sum + (t.quantity > 0 ? t.quantity : 0), 0)} itens`}
+                                            subValues={[
+                                                { label: "Valor Custo", value: formatCurrency(stockValueReport.resellerPaidValue), color: "text-blue-700" },
+                                                { label: "Valor Venda", value: formatCurrency(stockValueReport.resellerSaleValue), color: "text-green-700" }
+                                            ]}
                                         />
                                         <StatCard 
                                             title="💵 A Receber" 
@@ -1328,9 +1403,17 @@ return (
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                     <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg p-4"><p className="text-purple-100 text-sm">Total Revendedores</p><p className="text-2xl font-bold">{resellers.length}</p></div>
-                                    <div className="bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg p-4"><p className="text-green-100 text-sm">Vendas Totais</p><p className="text-2xl font-bold">{formatCurrency(resellerSales.reduce((sum, s) => sum + s.totalSale, 0))}</p></div>
-                                    <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg p-4"><p className="text-blue-100 text-sm">Seu Ganho (75%)</p><p className="text-2xl font-bold">{formatCurrency(resellerSales.reduce((sum, s) => sum + s.yourEarnings, 0))}</p></div>
-                                    <div className="bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg p-4"><p className="text-orange-100 text-sm">Comissões (25%)</p><p className="text-2xl font-bold">{formatCurrency(resellerSales.reduce((sum, s) => sum + s.commission, 0))}</p></div>
+                                    <div className="bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg p-4"><p className="text-green-100 text-sm">Vendas Totais</p><p className="text-2xl font-bold">{formatCurrency(resellerSales.reduce((sum, s) => sum + (s.salePrice * s.quantity), 0))}</p></div>
+                                    <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg p-4"><p className="text-blue-100 text-sm">Seu Ganho</p><p className="text-2xl font-bold">{formatCurrency(resellerSales.reduce((sum, s) => {
+                                        const revendedor = resellers.find(r => r.id === s.resellerId);
+                                        const commissionRate = revendedor ? revendedor.commissionRate : 25;
+                                        return sum + (s.salePrice * s.quantity) * ((100 - commissionRate) / 100);
+                                    }, 0))}</p></div>
+                                    <div className="bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg p-4"><p className="text-orange-100 text-sm">Comissões</p><p className="text-2xl font-bold">{formatCurrency(resellerSales.reduce((sum, s) => {
+                                        const revendedor = resellers.find(r => r.id === s.resellerId);
+                                        const commissionRate = revendedor ? revendedor.commissionRate : 25;
+                                        return sum + (s.salePrice * s.quantity) * (commissionRate / 100);
+                                    }, 0))}</p></div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                           {resellers.map(r => {
@@ -1339,6 +1422,20 @@ return (
     const totalVendido = vendasDesteRevendedor.reduce((acc, venda) => acc + (venda.salePrice * venda.quantity), 0);
     const valorComissao = totalVendido * (r.commissionRate / 100);
     const valorAReceber = totalVendido - valorComissao;
+
+    // 2. CALCULA O VALOR DO ESTOQUE EM COMODATO
+    const estoqueDesteRevendedor = resellerStock.filter(item => item.resellerId === r.id && item.quantity > 0);
+    const capitalRetido = estoqueDesteRevendedor.reduce((acc, item) => {
+        const produto = products.find(p => p.id === item.productId);
+        const custoUnitario = produto ? parseFloat(produto.costPrice || 0) : 0;
+        return acc + (item.quantity * custoUnitario);
+    }, 0);
+    
+    const lucroPotencial = estoqueDesteRevendedor.reduce((acc, item) => {
+        const produto = products.find(p => p.id === item.productId);
+        const vendaUnitario = produto ? parseFloat(produto.catalogPrice || 0) : 0;
+        return acc + (item.quantity * vendaUnitario);
+    }, 0);
 
     return (
         <div key={r.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col relative overflow-hidden">
@@ -1373,6 +1470,33 @@ return (
                 </div>
             </div>
 
+            {/* INDICADORES FINANCEIROS DO ESTOQUE EM COMODATO */}
+            <div className="bg-blue-50 p-3 rounded-lg mb-4 space-y-2 border border-blue-200">
+                <div className="flex items-center gap-2 mb-2">
+                    <i className="fas fa-boxes text-blue-600"></i>
+                    <h4 className="font-medium text-blue-900">Estoque em Comodato</h4>
+                </div>
+                <div className="grid grid-cols-1 gap-2">
+                    <div className="flex justify-between text-sm">
+                        <span className="text-blue-700">Capital Retido (Custo):</span>
+                        <span className="font-bold text-blue-800">{formatCurrency(capitalRetido)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                        <span className="text-blue-700">Lucro Potencial (Rua):</span>
+                        <span className="font-bold text-green-700">{formatCurrency(lucroPotencial)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm pt-1 border-t border-blue-300">
+                        <span className="text-blue-900 font-medium">Margem Potencial:</span>
+                        <span className="font-bold text-purple-700">
+                            {lucroPotencial > 0 ? 
+                                `${((lucroPotencial - capitalRetido) / lucroPotencial * 100).toFixed(1)}%` : 
+                                '0%'
+                            }
+                        </span>
+                    </div>
+                </div>
+            </div>
+
             <div className="flex flex-wrap gap-2 mt-auto">
                 <button onClick={() => { setSelectedReseller(r); setShowResellerSaleModal(true); }} className="flex-1 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded transition text-sm font-medium" title="Registrar Venda"><i className="fas fa-euro-sign"></i> Venda</button>
                 <button onClick={() => { setSelectedReseller(r); setShowTransferModal(true); }} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded transition text-sm font-medium" title="Transferir Stock"><i className="fas fa-exchange-alt"></i> Stock</button>
@@ -1380,6 +1504,7 @@ return (
             <div className="flex flex-wrap gap-2 mt-2">
                 <button onClick={() => { setSelectedReseller(r); setShowReturnModal(true); }} className="flex-1 bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded transition text-sm font-medium" title="Devolução"><i className="fas fa-undo"></i> Devolver</button>
                 <button onClick={() => { setSelectedResellerInventory(r); setShowInventoryModal(true); }} className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded transition text-sm font-medium" title="Ver/Editar Stock"><i className="fas fa-boxes"></i></button>
+                <button onClick={() => { setSelectedResellerForHistory(r); setShowSalesHistoryModal(true); }} className="bg-purple-500 hover:bg-purple-600 text-white px-3 py-2 rounded transition text-sm font-medium" title="Histórico de Vendas"><i className="fas fa-history"></i> Histórico</button>
                 <button onClick={() => handleVisitReseller(r.id)} className="bg-teal-500 hover:bg-teal-600 text-white px-3 py-2 rounded transition text-sm font-medium" title="Registrar Visita"><i className="fas fa-handshake"></i></button>
                 <button onClick={() => handleDeleteReseller(r.id)} className="bg-red-50 hover:bg-red-100 text-red-600 px-3 py-2 rounded transition text-sm font-medium" title="Excluir Revendedor"><i className="fas fa-trash"></i></button>
             </div>
@@ -1520,8 +1645,8 @@ return (
                                     <h3 className="text-lg font-bold mb-4">Registrar Entrada de Mercadoria</h3>
                                     <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
                                         <SearchableDropdown label="Produto *" options={productOptions} value={purchaseForm.productId} onChange={(value) => setPurchaseForm({...purchaseForm, productId: value})} placeholder="Selecione o produto" renderOption={(option) => (<div><div className="font-medium">{option.label}</div><div className="text-xs text-gray-500">Stock: {option.stock} un.</div></div>)} />
-                                        <input type="number" placeholder="Quantidade" value={purchaseForm.quantity} onChange={(e) => setPurchaseForm({...purchaseForm, quantity: e.target.value})} className="border rounded-lg p-3 text-sm" />
-                                        <input type="number" placeholder="Preço Unitário (€)" value={purchaseForm.price} onChange={(e) => setPurchaseForm({...purchaseForm, price: e.target.value})} className="border rounded-lg p-3 text-sm" />
+                                        <input type="number" placeholder="Quantidade" min="1" value={purchaseForm.quantity} onChange={(e) => setPurchaseForm({...purchaseForm, quantity: e.target.value})} className="border rounded-lg p-3 text-sm" />
+                                        <input type="number" placeholder="Preço Unitário (R$)" min="0" step="0.01" value={purchaseForm.price} onChange={(e) => setPurchaseForm({...purchaseForm, price: e.target.value})} className="border rounded-lg p-3 text-sm" />
                                         <input type="date" value={purchaseForm.date} onChange={(e) => setPurchaseForm({...purchaseForm, date: e.target.value})} className="border rounded-lg p-3 text-sm" />
                                     </div>
                                     <button onClick={handleAddPurchase} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition text-sm"><i className="fas fa-save mr-2"></i>Registrar Compra</button>
@@ -1736,7 +1861,7 @@ return (
                                 </div>
                                 <div>
                                     <label className="block text-gray-700 font-medium mb-2">Preço Unitário (€) *</label>
-                                    <input type="number" value={quickBuyForm.price} onChange={(e) => setQuickBuyForm({...quickBuyForm, price: e.target.value})} className="w-full border rounded-lg p-3" step="0.01" />
+                                    <input type="number" value={quickBuyForm.price} onChange={(e) => setQuickBuyForm({...quickBuyForm, price: e.target.value})} className="w-full border rounded-lg p-3" step="0.01" min="0" />
                                 </div>
                             </div>
                             <div>
@@ -1985,6 +2110,121 @@ return (
     </div>
 </Modal>
 
+                    {/* Modal Histórico de Vendas do Revendedor */}
+                    <Modal isOpen={showSalesHistoryModal} onClose={() => { setShowSalesHistoryModal(false); setSelectedResellerForHistory(null); }} title={`📊 Histórico de Vendas - ${selectedResellerForHistory?.salonName}`}>
+                        <div className="space-y-4">
+                            {selectedResellerForHistory && (
+                                <>
+                                    {/* Cabeçalho com informações do revendedor */}
+                                    <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                                        <div className="flex items-center gap-3">
+                                            <div className="bg-purple-600 text-white rounded-full w-10 h-10 flex items-center justify-center">
+                                                <i className="fas fa-user"></i>
+                                            </div>
+                                            <div>
+                                                <h3 className="font-bold text-purple-900">{selectedResellerForHistory.salonName}</h3>
+                                                <p className="text-purple-700 text-sm">Total de vendas: {resellerSales.filter(s => s.resellerId === selectedResellerForHistory.id).length}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Lista de vendas */}
+                                    <div className="bg-white rounded-lg border overflow-hidden">
+                                        {resellerSales
+                                            .filter(sale => sale.resellerId === selectedResellerForHistory.id)
+                                            .sort((a, b) => new Date(b.date) - new Date(a.date))
+                                            .length === 0 ? (
+                                            <div className="p-8 text-center text-gray-500">
+                                                <i className="fas fa-receipt text-4xl mb-3 opacity-30"></i>
+                                                <p>Nenhuma venda registrada para este revendedor.</p>
+                                            </div>
+                                        ) : (
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full">
+                                                    <thead className="bg-gray-50 border-b">
+                                                        <tr>
+                                                            <th className="p-3 text-left text-xs font-medium text-gray-700">Data</th>
+                                                            <th className="p-3 text-left text-xs font-medium text-gray-700">Produto</th>
+                                                            <th className="p-3 text-center text-xs font-medium text-gray-700">Qtd</th>
+                                                            <th className="p-3 text-right text-xs font-medium text-gray-700">Valor</th>
+                                                            <th className="p-3 text-right text-xs font-medium text-gray-700">Total</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {resellerSales
+                                                            .filter(sale => sale.resellerId === selectedResellerForHistory.id)
+                                                            .sort((a, b) => new Date(b.date) - new Date(a.date))
+                                                            .map(sale => {
+                                                                const product = products.find(p => p.id === sale.productId);
+                                                                const totalValue = sale.salePrice * sale.quantity;
+                                                                return (
+                                                                    <tr key={sale.id} className="border-b hover:bg-gray-50">
+                                                                        <td className="p-3">
+                                                                            <div className="text-sm">
+                                                                                {new Date(sale.date).toLocaleDateString('pt-BR')}
+                                                                            </div>
+                                                                            <div className="text-xs text-gray-500">
+                                                                                {new Date(sale.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                                                            </div>
+                                                                        </td>
+                                                                        <td className="p-3">
+                                                                            <div className="font-medium text-sm">
+                                                                                {product ? product.name : 'Produto não encontrado'}
+                                                                            </div>
+                                                                            {product && (
+                                                                                <div className="text-xs text-gray-500">
+                                                                                    {product.category}
+                                                                                </div>
+                                                                            )}
+                                                                        </td>
+                                                                        <td className="p-3 text-center">
+                                                                            <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs font-medium">
+                                                                                {sale.quantity} un
+                                                                            </span>
+                                                                        </td>
+                                                                        <td className="p-3 text-right">
+                                                                            <div className="text-sm font-medium">
+                                                                                {formatCurrency(sale.salePrice)}
+                                                                            </div>
+                                                                        </td>
+                                                                        <td className="p-3 text-right">
+                                                                            <div className="font-bold text-green-600">
+                                                                                {formatCurrency(totalValue)}
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                );
+                                                            })}
+                                                    </tbody>
+                                                    <tfoot className="bg-gray-50 border-t">
+                                                        <tr>
+                                                            <td colSpan="4" className="p-3 text-right font-medium">
+                                                                Total Geral:
+                                                            </td>
+                                                            <td className="p-3 text-right">
+                                                                <div className="font-bold text-lg text-green-600">
+                                                                    {formatCurrency(
+                                                                        resellerSales
+                                                                            .filter(sale => sale.resellerId === selectedResellerForHistory.id)
+                                                                            .reduce((sum, sale) => sum + (sale.salePrice * sale.quantity), 0)
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    </tfoot>
+                                                </table>
+                                            </div>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                        
+                        <button onClick={() => { setShowSalesHistoryModal(false); setSelectedResellerForHistory(null); }} className="w-full bg-gray-800 text-white px-6 py-3 rounded-lg font-bold hover:bg-gray-700 transition">
+                            Fechar
+                        </button>
+                    </Modal>
+
                     {/* Modal Novo Produto */}
                     <Modal isOpen={showProductModal} onClose={() => setShowProductModal(false)} title="Novo Produto">
                         <div className="space-y-4">
@@ -2005,7 +2245,7 @@ return (
                                 </div>
                                 <div>
                                     <label className="block text-gray-700 font-medium mb-2">💰 Preço Catálogo (€)</label>
-                                    <input type="number" value={productForm.catalogPrice} onChange={(e) => setProductForm({...productForm, catalogPrice: e.target.value})} className="w-full border rounded-lg p-3" placeholder="Ex: 45,90" step="0.01" />
+                                    <input type="number" value={productForm.catalogPrice} onChange={(e) => setProductForm({...productForm, catalogPrice: e.target.value})} className="w-full border rounded-lg p-3" placeholder="Ex: 45,90" step="0.01" min="0" />
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
@@ -2046,7 +2286,7 @@ return (
                                 </div>
                                 <div>
                                     <label className="block text-gray-700 font-medium mb-2">💰 Preço Catálogo (€)</label>
-                                    <input type="number" value={productForm.catalogPrice} onChange={(e) => setProductForm({...productForm, catalogPrice: e.target.value})} className="w-full border rounded-lg p-3" step="0.01" />
+                                    <input type="number" value={productForm.catalogPrice} onChange={(e) => setProductForm({...productForm, catalogPrice: e.target.value})} className="w-full border rounded-lg p-3" step="0.01" min="0" />
                                 </div>
                             </div>
                             <div>
@@ -2069,7 +2309,7 @@ return (
                                 </div>
                                 <div>
                                     <label className="block text-gray-700 font-medium mb-2">Preço de Venda (€) *</label>
-                                    <input type="number" value={saleForm.price} onChange={(e) => setSaleForm({...saleForm, price: e.target.value})} className="w-full border rounded-lg p-3" step="0.01" />
+                                    <input type="number" value={saleForm.price} onChange={(e) => setSaleForm({...saleForm, price: e.target.value})} className="w-full border rounded-lg p-3" step="0.01" min="0" />
                                 </div>
                             </div>
                             <div>
@@ -2105,7 +2345,7 @@ return (
                                 </div>
                                 <div>
                                     <label className="block text-gray-700 font-medium mb-2">Preço de Venda (€) *</label>
-                                    <input type="number" value={saleForm.price} onChange={(e) => setSaleForm({...saleForm, price: e.target.value})} className="w-full border rounded-lg p-3" step="0.01" />
+                                    <input type="number" value={saleForm.price} onChange={(e) => setSaleForm({...saleForm, price: e.target.value})} className="w-full border rounded-lg p-3" step="0.01" min="0" />
                                 </div>
                             </div>
                             <div>
@@ -2186,7 +2426,7 @@ return (
                                 </div>
                                 <div>
                                     <label className="block text-gray-700 font-medium mb-2">Comissão (%)</label>
-                                    <input type="number" value={resellerForm.commissionRate} onChange={(e) => setResellerForm({...resellerForm, commissionRate: e.target.value})} className="w-full border rounded-lg p-3" />
+                                    <input type="number" value={resellerForm.commissionRate} onChange={(e) => setResellerForm({...resellerForm, commissionRate: e.target.value})} className="w-full border rounded-lg p-3" min="0" max="100" step="0.1" />
                                 </div>
                             </div>
                             <div>
@@ -2219,7 +2459,7 @@ return (
                                 </div>
                                 <div>
                                     <label className="block text-gray-700 font-medium mb-2">Comissão (%)</label>
-                                    <input type="number" value={resellerForm.commissionRate} onChange={(e) => setResellerForm({...resellerForm, commissionRate: e.target.value})} className="w-full border rounded-lg p-3" />
+                                    <input type="number" value={resellerForm.commissionRate} onChange={(e) => setResellerForm({...resellerForm, commissionRate: e.target.value})} className="w-full border rounded-lg p-3" min="0" max="100" step="0.1" />
                                 </div>
                             </div>
                             <div>
@@ -2235,7 +2475,7 @@ return (
                         <div className="space-y-4">
                             <div>
                                 <label className="block text-gray-700 font-medium mb-2">Valor (€) *</label>
-                                <input type="number" value={creditForm.amount} onChange={(e) => setCreditForm({...creditForm, amount: e.target.value})} className="w-full border rounded-lg p-3" step="0.01" />
+                                <input type="number" value={creditForm.amount} onChange={(e) => setCreditForm({...creditForm, amount: e.target.value})} className="w-full border rounded-lg p-3" step="0.01" min="0" />
                             </div>
                             <div>
                                 <label className="block text-gray-700 font-medium mb-2">Data de Vencimento *</label>
