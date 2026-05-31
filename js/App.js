@@ -4,13 +4,40 @@ const { useState, useEffect, useMemo, useRef } = React;
 function App() {
     const [activeTab, setActiveTab] = useState('dashboard');
     const [user, setUser] = useState(null);
-    const [email, setEmail] = useState('');
+    const [userProfile, setUserProfile] = useState(null);
+    const [profileLoading, setProfileLoading] = useState(false);
+    const [loginInput, setLoginInput] = useState('');
     const [password, setPassword] = useState('');
     const [isRegistering, setIsRegistering] = useState(false);
     const [authError, setAuthError] = useState('');
+    const [comerciais, setComerciais] = useState([]);
+    const [pendingOrders, setPendingOrders] = useState([]);
+    const [showComercialModal, setShowComercialModal] = useState(false);
+    const [comercialForm, setComercialForm] = useState({ name: '', username: '', commissionReseller: 10, commissionDirect: 25 });
+    const [showAssignSalonsModal, setShowAssignSalonsModal] = useState(false);
+    const [editingComercial, setEditingComercial] = useState(null);
 
     useEffect(() => {
-        const unsubscribe = auth.onAuthStateChanged((userLogado) => {
+        const unsubscribe = auth.onAuthStateChanged(async (userLogado) => {
+            if (userLogado) {
+                setProfileLoading(true);
+                try {
+                    const snap = await db.collection('users').doc(userLogado.uid).get();
+                    let profile;
+                    if (snap.exists) {
+                        profile = snap.data();
+                    } else {
+                        profile = { role: 'admin', name: userLogado.email, uid: userLogado.uid, createdAt: new Date().toISOString() };
+                        await db.collection('users').doc(userLogado.uid).set(profile);
+                    }
+                    setUserProfile(profile);
+                } catch (e) {
+                    setUserProfile({ role: 'admin', name: userLogado.email, uid: userLogado.uid });
+                }
+                setProfileLoading(false);
+            } else {
+                setUserProfile(null);
+            }
             setUser(userLogado);
             if (!userLogado) {
                 setProducts([]); setPurchases([]); setSales([]); setCustomers([]);
@@ -21,20 +48,64 @@ function App() {
         return () => unsubscribe();
     }, []);
 
+    useEffect(() => {
+        if (!user || !userProfile || userProfile.role !== 'admin') return;
+        const unsub = db.collection('users').where('adminUid', '==', user.uid).where('role', '==', 'comercial').onSnapshot(snap => {
+            setComerciais(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        });
+        return () => unsub();
+    }, [user, userProfile]);
+
+    useEffect(() => {
+        if (!user || !userProfile || userProfile.role !== 'admin') return;
+        const unsub = db.collection('orders').where('adminUid', '==', user.uid).where('status', '==', 'pending').onSnapshot(snap => {
+            setPendingOrders(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        });
+        return () => unsub();
+    }, [user, userProfile]);
+
     const handleAuth = async (e) => {
         e.preventDefault();
         setAuthError('');
+        const emailToUse = loginInput.includes('@') ? loginInput : loginInput + '@boticario.internal';
         try {
             if (isRegistering) {
-                await auth.createUserWithEmailAndPassword(email, password);
+                await auth.createUserWithEmailAndPassword(emailToUse, password);
             } else {
-                await auth.signInWithEmailAndPassword(email, password);
+                await auth.signInWithEmailAndPassword(emailToUse, password);
             }
         } catch (error) {
             setAuthError("Erro: Verifique os dados ou use uma senha de 6+ caracteres.");
         }
     };
-    const handleLogout = () => auth.signOut();
+    const handleLogout = () => { auth.signOut(); };
+
+    const handleCreateComercial = async () => {
+        if (!comercialForm.name || !comercialForm.username) return alert('Nome e username são obrigatórios');
+        const email = comercialForm.username + '@boticario.internal';
+        const tempPassword = 'boticario123';
+        try {
+            const cred = await auth.createUserWithEmailAndPassword(email, tempPassword);
+            const profile = { role: 'comercial', name: comercialForm.name, username: comercialForm.username, adminUid: user.uid, commissionReseller: parseFloat(comercialForm.commissionReseller) || 10, commissionDirect: parseFloat(comercialForm.commissionDirect) || 25, assignedResellers: [], active: true, createdAt: new Date().toISOString(), uid: cred.user.uid };
+            await db.collection('users').doc(cred.user.uid).set(profile);
+            setComercialForm({ name: '', username: '', commissionReseller: 10, commissionDirect: 25 });
+            setShowComercialModal(false);
+            alert(`Comercial criada!\nUsername: ${comercialForm.username}\nSenha inicial: ${tempPassword}`);
+        } catch (e) {
+            alert('Erro: ' + e.message);
+        }
+    };
+
+    const handleApproveOrder = async (order) => {
+        const newTransfer = { id: generateId(), resellerId: order.resellerId, productId: order.productId, quantity: parseInt(order.quantity), date: new Date().toISOString().split('T')[0], notes: 'Aprovado de encomenda' };
+        const newResellerStock = [...resellerStock, newTransfer];
+        await db.collection('app_boticario').doc(user.uid).update({ resellerStock: newResellerStock });
+        await db.collection('orders').doc(order.id).update({ status: 'approved', approvedAt: new Date().toISOString() });
+    };
+
+    const handleRejectOrder = async (order) => {
+        await db.collection('orders').doc(order.id).update({ status: 'rejected', rejectedAt: new Date().toISOString() });
+    };
 
     const [products, setProducts] = useState([]);
     const [purchases, setPurchases] = useState([]);
@@ -141,8 +212,9 @@ function App() {
     const isReceivingData = useRef(true);
 
     useEffect(() => {
-        if (!user) return;
-        const unsubscribe = db.collection('app_boticario').doc(user.uid).onSnapshot((doc) => {
+        if (!user || !userProfile) return;
+        const dataUid = userProfile.role === 'comercial' ? userProfile.adminUid : user.uid;
+        const unsubscribe = db.collection('app_boticario').doc(dataUid).onSnapshot((doc) => {
             if (doc.exists) {
                 const data = doc.data();
                 isReceivingData.current = true;
@@ -165,10 +237,10 @@ function App() {
             }
         });
         return () => unsubscribe();
-    }, [user]);
+    }, [user, userProfile]);
 
     useEffect(() => {
-        if (!user) return;
+        if (!user || !userProfile || userProfile.role === 'comercial') return;
         if (isReceivingData.current) return;
         const saveData = {
             products: products || [], purchases: purchases || [], sales: sales || [],
@@ -656,8 +728,8 @@ function App() {
                     </div>
                     <form onSubmit={handleAuth} className="space-y-6">
                         <div>
-                            <label className="block text-gray-700 text-sm font-bold mb-2">E-mail</label>
-                            <input type="email" className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                            <label className="block text-gray-700 text-sm font-bold mb-2">Username ou E-mail</label>
+                            <input type="text" className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" value={loginInput} onChange={(e) => setLoginInput(e.target.value)} placeholder="admin@email.com ou username" required />
                         </div>
                         <div>
                             <label className="block text-gray-700 text-sm font-bold mb-2">Senha</label>
@@ -672,6 +744,19 @@ function App() {
                 </div>
             </div>
         );
+    }
+
+    if (profileLoading || !userProfile) {
+        return (
+            <div className="min-h-screen boticario-gradient flex items-center justify-center">
+                <div className="text-white text-center"><i className="fas fa-spinner fa-spin text-4xl mb-4"></i><p className="text-lg">A carregar perfil...</p></div>
+            </div>
+        );
+    }
+
+    if (userProfile.role === 'comercial') {
+        const allData = { products, resellers, resellerStock, resellerSales, resellerReturns, sales, purchases, stockAdjustments, adminUid: userProfile.adminUid };
+        return <ComercialApp user={user} userProfile={userProfile} allData={allData} onLogout={handleLogout} />;
     }
 
     return (
@@ -751,6 +836,30 @@ function App() {
                 {/* STOCK */}
                 {activeTab === 'stock' && (
                     <div className="space-y-4">
+                        {pendingOrders.length > 0 && (
+                            <div className="bg-white rounded-xl shadow-md p-4 border-l-4 border-yellow-400">
+                                <h3 className="font-bold text-gray-800 mb-3"><i className="fas fa-clipboard-list mr-2 text-yellow-500"></i>Encomendas Pendentes ({pendingOrders.length})</h3>
+                                <div className="space-y-2">
+                                    {pendingOrders.map(order => {
+                                        const produto = products.find(p => p.id === order.productId);
+                                        const revendedor = resellers.find(r => r.id === order.resellerId);
+                                        return (
+                                            <div key={order.id} className="flex items-center justify-between bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+                                                <div>
+                                                    <p className="font-medium text-gray-800">{produto?.name || order.productId} — {order.quantity} un.</p>
+                                                    <p className="text-xs text-gray-500">Salão: {revendedor?.salonName || order.resellerId} • Comercial: {order.comercialName}</p>
+                                                    {order.notes && <p className="text-xs text-gray-400 italic">{order.notes}</p>}
+                                                </div>
+                                                <div className="flex gap-2 ml-3">
+                                                    <button onClick={() => handleApproveOrder(order)} className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm"><i className="fas fa-check mr-1"></i>Aprovar</button>
+                                                    <button onClick={() => handleRejectOrder(order)} className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm"><i className="fas fa-times mr-1"></i>Rejeitar</button>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
                         <div className="flex justify-between items-center flex-wrap gap-2">
                             <h2 className="text-2xl font-bold text-gray-800"><i className="fas fa-warehouse mr-2"></i>Controle de Stock</h2>
                             <div className="flex gap-2">
@@ -828,6 +937,7 @@ function App() {
                                             <div>
                                                 <h3 className="font-bold text-gray-800 text-lg">{r.salonName}<span title={`Última visita: ${r.lastVisitDate ? formatDate(r.lastVisitDate) : 'Nunca'}`} className="ml-2 cursor-pointer"><i className={`fas fa-circle text-xs ${getVisitStatusColor(getDaysSince(r.lastVisitDate))}`}></i></span></h3>
                                                 <p className="text-gray-500 text-sm"><i className="fas fa-user text-xs mr-1"></i> {r.name}</p>
+                                                {(() => { const com = comerciais.find(c => (c.assignedResellers||[]).includes(r.id)); return com ? <span className="text-xs text-purple-600 font-medium"><i className="fas fa-star text-xs mr-1"></i>{com.name}</span> : null; })()}
                                             </div>
                                             <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full font-bold">{r.commissionRate}%</span>
                                         </div>
@@ -1071,6 +1181,30 @@ function App() {
                 {activeTab === 'config' && (
                     <div className="space-y-4">
                         <h2 className="text-2xl font-bold text-gray-800">Configurações</h2>
+                        <div className="bg-white rounded-xl shadow-md p-4 mb-4">
+                            <div className="flex justify-between items-center mb-3">
+                                <h3 className="text-lg font-bold text-gray-800"><i className="fas fa-users mr-2 text-purple-600"></i>Equipa Comercial</h3>
+                                <button onClick={() => setShowComercialModal(true)} className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-lg text-sm"><i className="fas fa-plus mr-1"></i>Nova Comercial</button>
+                            </div>
+                            {comerciais.length === 0 ? (
+                                <p className="text-gray-500 text-sm">Nenhuma comercial criada ainda.</p>
+                            ) : (
+                                <div className="space-y-3">
+                                    {comerciais.map(c => (
+                                        <div key={c.id} className="flex items-center justify-between bg-gray-50 p-3 rounded-lg border">
+                                            <div>
+                                                <p className="font-medium text-gray-800">{c.name}</p>
+                                                <p className="text-xs text-gray-500">@{c.username} • Salões: {(c.assignedResellers||[]).length} • Comissão R: {c.commissionReseller}% / D: {c.commissionDirect}%</p>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => { setEditingComercial(c); setShowAssignSalonsModal(true); }} className="bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded text-xs"><i className="fas fa-store mr-1"></i>Salões</button>
+                                                <button onClick={async () => { await db.collection('users').doc(c.id).update({ active: !c.active }); }} className={`${c.active ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-400 hover:bg-gray-500'} text-white px-2 py-1 rounded text-xs`}>{c.active ? 'Ativa' : 'Inativa'}</button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                         <div className="bg-white rounded-lg shadow-md p-4 max-w-md mb-4">
                             <h3 className="text-lg font-bold text-gray-800 mb-3"><i className="fas fa-cloud-upload-alt mr-2 text-purple-600"></i>Backup Automático</h3>
                             <div className="flex items-center justify-between mb-3">
@@ -1342,6 +1476,42 @@ function App() {
                     <p className="text-gray-500 text-sm mt-2">Versão Estável • {new Date().getFullYear()}</p>
                 </div>
             </footer>
+
+            <Modal isOpen={showComercialModal} onClose={() => setShowComercialModal(false)} title="Nova Comercial">
+                <div className="space-y-4">
+                    <div><label className="block text-gray-700 font-medium mb-2">Nome Completo *</label><input type="text" value={comercialForm.name} onChange={(e) => setComercialForm({...comercialForm, name: e.target.value})} className="w-full border rounded-lg p-3" placeholder="Ex: Patrícia Silva" /></div>
+                    <div><label className="block text-gray-700 font-medium mb-2">Username (login) *</label><input type="text" value={comercialForm.username} onChange={(e) => setComercialForm({...comercialForm, username: e.target.value.toLowerCase().replace(/\s/g,'')})} className="w-full border rounded-lg p-3" placeholder="ex: patricia" /><p className="text-xs text-gray-400 mt-1">Login será: {comercialForm.username || 'username'}@boticario.internal</p></div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div><label className="block text-gray-700 font-medium mb-2">Comissão Revendedores (%)</label><input type="number" value={comercialForm.commissionReseller} onChange={(e) => setComercialForm({...comercialForm, commissionReseller: e.target.value})} className="w-full border rounded-lg p-3" min="0" max="100" /></div>
+                        <div><label className="block text-gray-700 font-medium mb-2">Comissão Vendas Diretas (%)</label><input type="number" value={comercialForm.commissionDirect} onChange={(e) => setComercialForm({...comercialForm, commissionDirect: e.target.value})} className="w-full border rounded-lg p-3" min="0" max="100" /></div>
+                    </div>
+                    <div className="bg-yellow-50 border-l-4 border-yellow-400 p-3 text-sm text-yellow-800"><i className="fas fa-info-circle mr-2"></i>Senha inicial: <strong>boticario123</strong> — peça para alterar no primeiro acesso.</div>
+                    <button onClick={handleCreateComercial} className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-lg transition"><i className="fas fa-plus mr-2"></i>Criar Comercial</button>
+                </div>
+            </Modal>
+
+            <Modal isOpen={showAssignSalonsModal} onClose={() => { setShowAssignSalonsModal(false); setEditingComercial(null); }} title={`Salões de ${editingComercial?.name || ''}`}>
+                <div className="space-y-3">
+                    <p className="text-sm text-gray-600">Selecione os salões atribuídos a esta comercial:</p>
+                    {resellers.map(r => {
+                        const assigned = (editingComercial?.assignedResellers || []).includes(r.id);
+                        return (
+                            <div key={r.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+                                <div><p className="font-medium text-gray-800">{r.salonName}</p><p className="text-xs text-gray-500">{r.name}</p></div>
+                                <button onClick={async () => {
+                                    const current = editingComercial?.assignedResellers || [];
+                                    const updated = assigned ? current.filter(id => id !== r.id) : [...current, r.id];
+                                    await db.collection('users').doc(editingComercial.id).update({ assignedResellers: updated });
+                                    setEditingComercial({...editingComercial, assignedResellers: updated});
+                                }} className={`px-3 py-1 rounded text-sm font-medium ${assigned ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700'}`}>
+                                    {assigned ? <span><i className="fas fa-check mr-1"></i>Atribuído</span> : <span>Atribuir</span>}
+                                </button>
+                            </div>
+                        );
+                    })}
+                    {resellers.length === 0 && <p className="text-gray-500 text-sm">Nenhum revendedor cadastrado.</p>}
+                </div>
+            </Modal>
         </div>
     );
 }
