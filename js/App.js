@@ -27,19 +27,18 @@ function App() {
                     if (snap.exists) {
                         profile = snap.data();
                     } else {
-                        profile = { role: 'admin', name: userLogado.email, uid: userLogado.uid, createdAt: new Date().toISOString() };
+                        profile = { uid: userLogado.uid, role: 'admin', name: userLogado.email, zone: '', assignedResellers: [], commissionDirect: 25, commissionReseller: 10, active: true };
                         await db.collection('users').doc(userLogado.uid).set(profile);
                     }
                     setUserProfile(profile);
                 } catch (e) {
-                    setUserProfile({ role: 'admin', name: userLogado.email, uid: userLogado.uid });
+                    setUserProfile({ uid: userLogado.uid, role: 'admin', name: userLogado.email, zone: '', assignedResellers: [], commissionDirect: 25, commissionReseller: 10, active: true });
                 }
                 setProfileLoading(false);
+                setUser(userLogado);
             } else {
+                setUser(null);
                 setUserProfile(null);
-            }
-            setUser(userLogado);
-            if (!userLogado) {
                 setProducts([]); setPurchases([]); setSales([]); setCustomers([]);
                 setCreditSales([]); setResellers([]); setResellerStock([]);
                 setResellerSales([]); setResellerReturns([]); setStockAdjustments([]);
@@ -213,8 +212,8 @@ function App() {
     const isReceivingData = useRef(true);
 
     useEffect(() => {
-        if (!user || !userProfile) return;
-        const dataUid = userProfile.role === 'comercial' ? userProfile.adminUid : user.uid;
+        if (!user) return;
+        const dataUid = (userProfile && userProfile.role === 'comercial') ? userProfile.adminUid : user.uid;
         const unsubscribe = db.collection('app_boticario').doc(dataUid).onSnapshot((doc) => {
             if (doc.exists) {
                 const data = doc.data();
@@ -238,10 +237,10 @@ function App() {
             }
         });
         return () => unsubscribe();
-    }, [user, userProfile]);
+    }, [user]);
 
     useEffect(() => {
-        if (!user || !userProfile || userProfile.role === 'comercial') return;
+        if (!user || (userProfile && userProfile.role === 'comercial')) return;
         if (isReceivingData.current) return;
         const saveData = {
             products: products || [], purchases: purchases || [], sales: sales || [],
