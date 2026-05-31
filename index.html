@@ -358,9 +358,15 @@
             const [authError, setAuthError] = useState('');
 
             useEffect(() => {
-                const unsubscribe = auth.onAuthStateChanged((userLogado) => setUser(userLogado));
-              
- return () => unsubscribe();
+                const unsubscribe = auth.onAuthStateChanged((userLogado) => {
+                    setUser(userLogado);
+                    if (!userLogado) {
+                        setProducts([]); setPurchases([]); setSales([]); setCustomers([]);
+                        setCreditSales([]); setResellers([]); setResellerStock([]);
+                        setResellerSales([]); setResellerReturns([]); setStockAdjustments([]);
+                    }
+                });
+                return () => unsubscribe();
             }, []);
 
             const handleAuth = async (e) => {
@@ -1195,9 +1201,11 @@ return (
                         <div className="max-w-7xl mx-auto flex justify-between items-center flex-wrap gap-3">
                             <div>
                                 <h1 className="text-xl md:text-3xl font-bold"><i className="fas fa-store mr-3"></i>Gestão O Boticário</h1>
-                                <p className="text-white/80 mt-1 text-xs md:text-sm">Controle de vendas, estoque e revendedores</p>
+                                <p className="text-white/80 mt-1 text-xs md:text-sm">
+                                    <i className="fas fa-user-circle mr-1"></i>{user?.email}
+                                </p>
                             </div>
-                            <div className="flex gap-2 flex-wrap">
+                            <div className="flex gap-2 flex-wrap items-center">
                                 <button onClick={triggerImport} className="bg-green-600 hover:bg-green-700 px-3 py-2 rounded-lg transition text-sm">
                                     <i className="fas fa-upload mr-2"></i><span className="hidden sm:inline">Importar</span>
                                 </button>
@@ -1206,6 +1214,9 @@ return (
                                 </button>
                                 <button onClick={() => setActiveTab('config')} className="bg-white/20 hover:bg-white/30 px-3 py-2 rounded-lg transition">
                                     <i className="fas fa-cog"></i>
+                                </button>
+                                <button onClick={handleLogout} className="bg-red-500/30 hover:bg-red-500/50 px-3 py-2 rounded-lg transition text-sm" title="Sair">
+                                    <i className="fas fa-sign-out-alt mr-1"></i><span className="hidden sm:inline">Sair</span>
                                 </button>
                             </div>
                         </div>
@@ -2160,7 +2171,7 @@ return (
                                                                                 {new Date(sale.date).toLocaleDateString('pt-BR')}
                                                                             </div>
                                                                             <div className="text-xs text-gray-500">
-                                                                                {new Date(sale.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                                                                {sale.timestamp ? new Date(sale.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
                                                                             </div>
                                                                         </td>
                                                                         <td className="p-3">
