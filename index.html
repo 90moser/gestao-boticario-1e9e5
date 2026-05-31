@@ -380,14 +380,12 @@
             // =========================================================
 // Função para registrar a visita de hoje
             const handleRegisterVisit = (resellerId) => {
-                const today = new Date().toISOString().split('T')[0]; // Pega a data de hoje (YYYY-MM-DD)
-                
-                const updatedResellers = resellers.map(r => 
+                const today = new Date().toISOString().split('T')[0];
+                const updatedResellers = resellers.map(r =>
                     r.id === resellerId ? { ...r, lastVisitDate: today } : r
                 );
-                
+                isReceivingData.current = false;
                 setResellers(updatedResellers);
-                // Como o Firebase já está escutando o 'resellers', ele vai salvar na nuvem automaticamente!
             };
             
             // Alias para compatibilidade com o código existente
@@ -588,9 +586,7 @@ const [selectedResellerForHistory, setSelectedResellerForHistory] = useState(nul
                 const adjustmentsIn = stockAdjustments.filter(a => a.productId === productId && a.type === 'entrada').reduce((sum, a) => sum + parseInt(a.quantity), 0);
                 const adjustmentsOut = stockAdjustments.filter(a => a.productId === productId && a.type === 'saida').reduce((sum, a) => sum + parseInt(a.quantity), 0);
                 
-                // ❌ ERRO CORRIGIDO: totalResellerSales estava sendo ADICIONADO em vez de SUBTRAÍDO
-                // ✅ LÓGICA CORRETA: Entradas - Saídas - Transferências para Revendedores + Devoluções - Vendas dos Revendedores + Ajustes
-                return totalIn - totalOut - totalToResellers + totalReturned - totalResellerSales + adjustmentsIn - adjustmentsOut;
+                return Math.max(0, totalIn - totalOut - totalToResellers + totalReturned - totalResellerSales + adjustmentsIn - adjustmentsOut);
             };
 
             const calculateResellerStock = (resellerId, productId) => {
@@ -645,7 +641,7 @@ const [selectedResellerForHistory, setSelectedResellerForHistory] = useState(nul
             const expiryAlertProducts = useMemo(() => products.filter(p => p.expiryDate && calculateDaysUntilExpiry(p.expiryDate) <= expiryAlertDays), [products, expiryAlertDays]);
             const pendingCreditSales = useMemo(() => creditSales.filter(c => c.status === 'pendente'), [creditSales]);
             const staleResellerProducts = useMemo(() => {
-                return resellerStock.filter(t => calculateDaysSince(t.date) >= staleProductDays).map(t => {
+                return resellerStock.filter(t => t.quantity > 0 && calculateDaysSince(t.date) >= staleProductDays).map(t => {
                     const reseller = resellers.find(r => r.id === t.resellerId);
                     const product = products.find(p => p.id === t.productId);
                     return { ...t, resellerName: reseller?.name, productName: product?.name, days: calculateDaysSince(t.date) };
@@ -1506,7 +1502,7 @@ return (
                 <button onClick={() => { setSelectedResellerInventory(r); setShowInventoryModal(true); }} className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded transition text-sm font-medium" title="Ver/Editar Stock"><i className="fas fa-boxes"></i></button>
                 <button onClick={() => { setSelectedResellerForHistory(r); setShowSalesHistoryModal(true); }} className="bg-purple-500 hover:bg-purple-600 text-white px-3 py-2 rounded transition text-sm font-medium" title="Histórico de Vendas"><i className="fas fa-history"></i> Histórico</button>
                 <button onClick={() => handleVisitReseller(r.id)} className="bg-teal-500 hover:bg-teal-600 text-white px-3 py-2 rounded transition text-sm font-medium" title="Registrar Visita"><i className="fas fa-handshake"></i></button>
-                <button onClick={() => handleDeleteReseller(r.id)} className="bg-red-50 hover:bg-red-100 text-red-600 px-3 py-2 rounded transition text-sm font-medium" title="Excluir Revendedor"><i className="fas fa-trash"></i></button>
+                <button onClick={() => confirmDeleteReseller(r)} className="bg-red-50 hover:bg-red-100 text-red-600 px-3 py-2 rounded transition text-sm font-medium" title="Excluir Revendedor"><i className="fas fa-trash"></i></button>
             </div>
         </div>
     );
