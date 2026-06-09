@@ -704,6 +704,57 @@ function App() {
 
     const triggerImport = () => { fileInputRef.current.click(); };
 
+    const recuperarDados = async () => {
+        if (!window.confirm('Recuperar todos os dados? Confirmar?')) return;
+        try {
+            const [doc1, doc2] = await Promise.all([
+                db.collection('app_boticario').doc('banco_principal').get(),
+                db.collection('app_boticario').doc('yYyTI37vC8MvHqKt1prZ1LbCWZd2').get()
+            ]);
+            const data1 = doc1.exists ? doc1.data() : {};
+            const data2 = doc2.exists ? doc2.data() : {};
+            const mergeArray = (arr1, arr2) => {
+                const base = Array.isArray(arr1) ? arr1 : [];
+                const nova = Array.isArray(arr2) ? arr2 : [];
+                const ids = new Set(base.map(i => i.id));
+                return [...base, ...nova.filter(i => i.id && !ids.has(i.id))];
+            };
+            const dadosFinais = {
+                products: mergeArray(data1.products, data2.products),
+                purchases: mergeArray(data1.purchases, data2.purchases),
+                sales: mergeArray(data1.sales, data2.sales),
+                customers: mergeArray(data1.customers, data2.customers),
+                creditSales: mergeArray(data1.creditSales, data2.creditSales),
+                resellers: mergeArray(data1.resellers, data2.resellers),
+                resellerStock: mergeArray(data1.resellerStock, data2.resellerStock),
+                resellerSales: mergeArray(data1.resellerSales, data2.resellerSales),
+                resellerReturns: mergeArray(data1.resellerReturns, data2.resellerReturns),
+                stockAdjustments: mergeArray(data1.stockAdjustments, data2.stockAdjustments)
+            };
+            await db.collection('app_boticario').doc('banco_principal').set(dadosFinais);
+            setProducts(dadosFinais.products || []);
+            setPurchases(dadosFinais.purchases || []);
+            setSales(dadosFinais.sales || []);
+            setCustomers(dadosFinais.customers || []);
+            setCreditSales(dadosFinais.creditSales || []);
+            setResellers(dadosFinais.resellers || []);
+            setResellerStock(dadosFinais.resellerStock || []);
+            setResellerSales(dadosFinais.resellerSales || []);
+            setResellerReturns(dadosFinais.resellerReturns || []);
+            setStockAdjustments(dadosFinais.stockAdjustments || []);
+            alert(
+                '✅ DADOS RECUPERADOS!\n\n' +
+                'Produtos: ' + dadosFinais.products.length + '\n' +
+                'Compras: ' + dadosFinais.purchases.length + '\n' +
+                'Vendas: ' + dadosFinais.sales.length + '\n' +
+                'Revendedores: ' + dadosFinais.resellers.length + '\n' +
+                'Clientes: ' + dadosFinais.customers.length
+            );
+        } catch(e) {
+            alert('Erro: ' + e.message);
+        }
+    };
+
     const handleRegisterVisit = (resellerId) => {
         const today = new Date().toISOString().split('T')[0];
         const updatedResellers = resellers.map(r => r.id === resellerId ? { ...r, lastVisitDate: today } : r);
@@ -774,6 +825,7 @@ function App() {
                         <button onClick={exportData} className="bg-white/20 hover:bg-white/30 px-3 py-2 rounded-lg transition text-sm"><i className="fas fa-download mr-2"></i><span className="hidden sm:inline">Exportar</span></button>
                         <button onClick={() => setActiveTab('config')} className="bg-white/20 hover:bg-white/30 px-3 py-2 rounded-lg transition"><i className="fas fa-cog"></i></button>
                         <button onClick={async () => { const doc = await db.collection('app_boticario').doc('banco_principal').get(); console.log('Doc exists:', doc.exists); console.log('Data:', JSON.stringify(doc.data())); alert('Doc exists: ' + doc.exists + '\nProdutos: ' + (doc.data()?.products?.length || 0)); }} className="bg-red-500 text-white px-2 py-1 rounded text-xs">DEBUG</button>
+                        <button onClick={recuperarDados} className="bg-red-600 hover:bg-red-700 px-3 py-2 rounded-lg transition text-sm font-bold">🔧 Recuperar Dados</button>
                         <button onClick={handleLogout} className="bg-red-500/30 hover:bg-red-500/50 px-3 py-2 rounded-lg transition text-sm" title="Sair"><i className="fas fa-sign-out-alt mr-1"></i><span className="hidden sm:inline">Sair</span></button>
                     </div>
                 </div>
